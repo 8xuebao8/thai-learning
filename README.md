@@ -1,6 +1,8 @@
 # 泰语日常 Thai Everyday
 
-面向已经能用泰语日常交流的中文使用者。React 网页提供词汇卡、五类测验、拼句、个人词库和间隔复习；浏览器先保存，配置 Supabase 后跨设备同步。网页可发布到 GitHub Pages。
+面向已经能用泰语日常交流的中文使用者。React 网页提供词汇卡、五类测验、拼句、个人词库和间隔复习；浏览器先保存，配置 Supabase 后跨设备同步。网页已发布到 GitHub Pages。
+
+在线使用：[泰语日常](https://8xuebao8.github.io/thai-learning/) · 源码仓库：[8xuebao8/thai-learning](https://github.com/8xuebao8/thai-learning)。登录使用自己创建的邮箱密码账号，云数据保存在新加坡 Supabase。
 
 ## 本地运行
 

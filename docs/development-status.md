@@ -51,3 +51,12 @@ SQL 测试通过本地 PGlite PostgreSQL 模拟认证角色和 auth.uid，实际
 目标项目 `thai-learning-sg`（`hvpmjhsommuewiwrhozl`），地区 `ap-southeast-1`。数据库迁移成功，SQL 查询确认 7 张表均开启 RLS；Email 登录已开启，公开注册关闭，邮箱确认保持开启。公开 URL 和 publishable key 写入已被 Git 忽略的本地 `.env`。应用改为邮箱密码登录，新增 3 项身份接口测试。用户负责 GitHub 仓库及网站发布；尚未创建远程仓库或上传。
 
 本人已创建邮箱登录账号，经明确确认已执行允许名单授权（查询返回唯一一行）。本人已在网页成功登录，刷新后会话保持正常。临时将每日目标从 10 改为 11，数据库查到 settings 记录（版本 1）；恢复 10 后云端版本递增到 2，真实上传验证通过。尚未进行两台设备验证。没有保存数据库密码或登录密码。
+
+
+## GitHub Pages 发布（2026-10-13）
+
+用户随后授权代为创建仓库与部署。已创建公开仓库 `8xuebao8/thai-learning`，配置 Actions 的两个公开 Supabase 变量与 GitHub Actions 发布源。正式地址为 `https://8xuebao8.github.io/thai-learning/`，Supabase Site URL 已更新为此地址。
+
+通过 GitHub 连接工具上传 48 个工程文件，没有上传 `.env`、密码、个人学习记录、截图或本地构建产物。首次自动部署发生在 Pages 设置完成前，因此发布步骤失败；完整配置后重新运行 #2，云端测试、构建和发布均成功。正式网页首页与邮箱登录框可正常打开。云端同步在本地版本已验证，正式站点登录的验收另行记录。
+
+本机没有 GitHub HTTPS 登录凭据，因此首次上传通过 GitHub 连接工具完成。工程的 main 已与远程内容核对一致并设置跟踪；原本地历史保留在 `local-before-github-deploy` 分支。后续常规 git push 需要本人配置本机 GitHub 登录。
