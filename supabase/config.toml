@@ -1,0 +1,5 @@
+project_id = "thai-learning"
+
+[functions.generate-entry]
+verify_jwt = false
+# The function validates the user JWT with auth.getUser; the public API key is not authentication.

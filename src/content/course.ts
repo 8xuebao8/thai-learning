@@ -1,0 +1,422 @@
+import type { Word, Exercise, Theme } from "../domain/model";
+export const units: {
+  id: Theme;
+  title: string;
+  thai: string;
+  description: string;
+  color: string;
+}[] = [
+  {
+    id: "work",
+    title: "工作与商务",
+    thai: "การทำงาน",
+    description: "把想法说清楚，把合作聊顺畅。",
+    color: "sage",
+  },
+  {
+    id: "campus",
+    title: "大学与课堂",
+    thai: "มหาวิทยาลัย",
+    description: "从课堂讨论到作业与考试。",
+    color: "lavender",
+  },
+  {
+    id: "life",
+    title: "生活办事",
+    thai: "ชีวิตประจำวัน",
+    description: "租房、出行与日常安排。",
+    color: "peach",
+  },
+];
+type Seed = [
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+];
+const seeds: Record<string, Seed[]> = {
+  work: [
+    [
+      "meeting",
+      "ประชุม",
+      "pra²-chum¹",
+      "开会",
+      "动词",
+      "用于工作会议和讨论。",
+      "เราประชุมวันนี้",
+      "rao¹ pra²-chum¹ wan¹ nii⁴",
+      "我们今天开会。",
+    ],
+    [
+      "work",
+      "งาน",
+      "ngaan¹",
+      "工作；任务",
+      "名词",
+      "งาน 可指工作、任务或活动，结合语境理解。",
+      "ฉันมีงาน",
+      "chan⁵ mii¹ ngaan¹",
+      "我有工作要做。",
+    ],
+    [
+      "time",
+      "เวลา",
+      "wee¹-laa¹",
+      "时间",
+      "名词",
+      "约时间时常用 เวลา。",
+      "คุณมีเวลาไหม",
+      "khun¹ mii¹ wee¹-laa¹ mai⁵",
+      "你有时间吗？",
+    ],
+    [
+      "plan",
+      "แผน",
+      "phɛɛn⁵",
+      "计划",
+      "名词",
+      "表示方案或计划。",
+      "เรามีแผนใหม่",
+      "rao¹ mii¹ phɛɛn⁵ mai²",
+      "我们有新计划。",
+    ],
+    [
+      "help",
+      "ช่วย",
+      "chuai³",
+      "帮助",
+      "动词",
+      "ช่วย 放在动词前也可以表达请求。",
+      "ช่วยฉันหน่อย",
+      "chuai³ chan⁵ nɔi²",
+      "请帮我一下。",
+    ],
+    [
+      "send",
+      "ส่ง",
+      "song²",
+      "发送；送",
+      "动词",
+      "常与文件、邮件和消息搭配。",
+      "ส่งงานวันนี้",
+      "song² ngaan¹ wan¹ nii⁴",
+      "今天提交作业／工作。",
+    ],
+  ],
+  campus: [
+    [
+      "study",
+      "เรียน",
+      "rian¹",
+      "学习；上课",
+      "动词",
+      "เรียนภาษาไทย 表示学习泰语。",
+      "ฉันเรียนภาษาไทย",
+      "chan⁵ rian¹ phaa¹-saa⁵ thai¹",
+      "我学习泰语。",
+    ],
+    [
+      "teacher",
+      "อาจารย์",
+      "aa¹-chaan¹",
+      "老师；大学教师",
+      "名词",
+      "大学及专业教学场景常用。",
+      "อาจารย์อยู่ที่นี่",
+      "aa¹-chaan¹ yuu² thii³ nii³",
+      "老师在这里。",
+    ],
+    [
+      "exam",
+      "สอบ",
+      "sɔɔp²",
+      "考试",
+      "动词",
+      "มีสอบ 表示有考试。",
+      "พรุ่งนี้มีสอบ",
+      "phrung³-nii⁴ mii¹ sɔɔp²",
+      "明天有考试。",
+    ],
+    [
+      "understand",
+      "เข้าใจ",
+      "khao³-jai¹",
+      "理解；明白",
+      "动词",
+      "ไม่เข้าใจ 表示不明白。",
+      "ฉันไม่เข้าใจ",
+      "chan⁵ mai³ khao³-jai¹",
+      "我不明白。",
+    ],
+    [
+      "question",
+      "คำถาม",
+      "kham¹-thaam⁵",
+      "问题；提问",
+      "名词",
+      "มีคำถาม 表示有问题想问。",
+      "ฉันมีคำถาม",
+      "chan⁵ mii¹ kham¹-thaam⁵",
+      "我有一个问题。",
+    ],
+    [
+      "library",
+      "ห้องสมุด",
+      "hɔng³ sa²-mut²",
+      "图书馆",
+      "名词",
+      "场所名词；去图书馆使用 ไปห้องสมุด。",
+      "ฉันไปห้องสมุด",
+      "chan⁵ pai¹ hɔng³ sa²-mut²",
+      "我去图书馆。",
+    ],
+  ],
+  life: [
+    [
+      "rent",
+      "เช่า",
+      "chao³",
+      "租；租用",
+      "动词",
+      "เช่าห้อง 表示租房间。",
+      "ฉันเช่าห้อง",
+      "chan⁵ chao³ hɔng³",
+      "我租房间。",
+    ],
+    [
+      "bank",
+      "ธนาคาร",
+      "tha⁴-naa¹-khaan¹",
+      "银行",
+      "名词",
+      "办理银行业务的场所。",
+      "ธนาคารอยู่ที่ไหน",
+      "tha⁴-naa¹-khaan¹ yuu² thii³ nai⁵",
+      "银行在哪里？",
+    ],
+    [
+      "repair",
+      "ซ่อม",
+      "sɔm³",
+      "维修",
+      "动词",
+      "修理物件、设备。",
+      "ช่วยซ่อมหน่อย",
+      "chuai³ sɔm³ nɔi²",
+      "请帮忙修一下。",
+    ],
+    [
+      "appointment",
+      "นัด",
+      "nat⁴",
+      "约；预约",
+      "动词",
+      "มีนัด 表示有约或有预约。",
+      "ฉันมีนัดพรุ่งนี้",
+      "chan⁵ mii¹ nat⁴ phrung³-nii⁴",
+      "我明天有预约。",
+    ],
+    [
+      "document",
+      "เอกสาร",
+      "eek²-ka²-saan⁵",
+      "文件；材料",
+      "名词",
+      "办手续时经常需要的材料。",
+      "ฉันมีเอกสาร",
+      "chan⁵ mii¹ eek²-ka²-saan⁵",
+      "我有文件。",
+    ],
+    [
+      "tomorrow",
+      "พรุ่งนี้",
+      "phrung³-nii⁴",
+      "明天",
+      "时间词",
+      "时间通常可放在句首或句尾，视语境而定。",
+      "เจอกันพรุ่งนี้",
+      "jəə¹ kan¹ phrung³-nii⁴",
+      "明天见。",
+    ],
+  ],
+};
+export const courseWords: Word[] = Object.entries(seeds).flatMap(
+  ([theme, words]) =>
+    words.map(([id, thai, roman, chinese, pos, note, et, er, ec]) => ({
+      id: `course:${id}`,
+      thai,
+      roman,
+      chinese,
+      pos,
+      note,
+      theme: theme as Theme,
+      example: { thai: et, roman: er, chinese: ec },
+      source: `参考检索：https://en.wiktionary.org/wiki/${thai}；本应用标注尚待人工核对`,
+      review: "draft" as const,
+      version: 1,
+      dirty: false,
+      updatedAt: 0,
+    })),
+);
+function exercise(
+  id: string,
+  theme: Theme,
+  prompt: string,
+  parts: [string, string][],
+  explanation: string,
+): Exercise {
+  return {
+    id: `sentence:${id}`,
+    theme,
+    prompt,
+    thai: parts.map((p) => p[0]).join(""),
+    roman: parts.map((p) => p[1]).join(" "),
+    tiles: parts.map(([thai, roman], i) => ({
+      id: `${id}-${i}`,
+      token: thai,
+      thai,
+      roman,
+    })),
+    answers: [parts.map((p) => p[0])],
+    explanation,
+    review: "draft",
+  };
+}
+export const exercises: Exercise[] = [
+  exercise(
+    "meeting",
+    "work",
+    "我们今天开会。",
+    [
+      ["เรา", "rao¹"],
+      ["ประชุม", "pra²-chum¹"],
+      ["วันนี้", "wan¹ nii⁴"],
+    ],
+    "基本语序为主语＋动词＋时间。也接受把时间放在句首。",
+  ),
+  exercise(
+    "plan",
+    "work",
+    "我们有新计划。",
+    [
+      ["เรา", "rao¹"],
+      ["มี", "mii¹"],
+      ["แผน", "phɛɛn⁵"],
+      ["ใหม่", "mai²"],
+    ],
+    "ใหม่（新的）放在名词 แผน 后面。",
+  ),
+  exercise(
+    "help",
+    "work",
+    "请帮我一下。",
+    [
+      ["ช่วย", "chuai³"],
+      ["ฉัน", "chan⁵"],
+      ["หน่อย", "nɔi²"],
+    ],
+    "หน่อย 放在请求句末，使请求更缓和；礼貌助词可视说话者和场合添加。",
+  ),
+  exercise(
+    "study",
+    "campus",
+    "我学习泰语。",
+    [
+      ["ฉัน", "chan⁵"],
+      ["เรียน", "rian¹"],
+      ["ภาษาไทย", "phaa¹ saa⁵ thai¹"],
+    ],
+    "主语＋动词＋宾语。ภาษาไทย 是完整名词短语“泰语”。",
+  ),
+  exercise(
+    "understand",
+    "campus",
+    "我不明白。",
+    [
+      ["ฉัน", "chan⁵"],
+      ["ไม่", "mai³"],
+      ["เข้าใจ", "khao³ jai¹"],
+    ],
+    "否定词 ไม่ 放在动词或形容词前。",
+  ),
+  exercise(
+    "question",
+    "campus",
+    "我有一个问题。",
+    [
+      ["ฉัน", "chan⁵"],
+      ["มี", "mii¹"],
+      ["คำถาม", "kham¹ thaam⁵"],
+    ],
+    "有问题可用 มีคำถาม，不必逐字翻译中文的“一个”。",
+  ),
+  exercise(
+    "bank",
+    "life",
+    "银行在哪里？",
+    [
+      ["ธนาคาร", "tha⁴ naa¹ khaan¹"],
+      ["อยู่", "yuu²"],
+      ["ที่ไหน", "thii³ nai⁵"],
+    ],
+    "地点问句常用：事物＋อยู่＋ที่ไหน。",
+  ),
+  exercise(
+    "appointment",
+    "life",
+    "我明天有预约。",
+    [
+      ["ฉัน", "chan⁵"],
+      ["มี", "mii¹"],
+      ["นัด", "nat⁴"],
+      ["พรุ่งนี้", "phrung³ nii⁴"],
+    ],
+    "时间词可在句首或句尾；本题也接受时间在句首。",
+  ),
+  exercise(
+    "rent",
+    "life",
+    "我租房间。",
+    [
+      ["ฉัน", "chan⁵"],
+      ["เช่า", "chao³"],
+      ["ห้อง", "hɔng³"],
+    ],
+    "动词 เช่า 后接租用的对象。",
+  ),
+];
+exercises[0].answers.push(["วันนี้", "เรา", "ประชุม"]);
+exercises[7].answers.push(["พรุ่งนี้", "ฉัน", "มี", "นัด"]);
+export const themeName = (id: Theme) =>
+  units.find((u) => u.id === id)?.title ?? "我的词库";
+export function personalExercises(words: Word[]): Exercise[] {
+  return words
+    .filter((w) => w.sentence && !w.deleted)
+    .map((w) => {
+      const s = w.sentence!;
+      const tokens = s.tokens.map((t) => t.thai);
+      return {
+        id: `sentence:${w.id}`,
+        theme: "personal",
+        prompt: w.chinese,
+        thai: w.thai,
+        roman: w.roman,
+        tiles: s.tokens.map((t, i) => ({
+          id: `${w.id}-${i}`,
+          token: t.thai,
+          ...t,
+        })),
+        answers: [
+          tokens,
+          ...s.alternatives.map((a) => a.map((i) => tokens[i])),
+        ],
+        explanation: s.explanation,
+        review: "draft",
+      };
+    });
+}
