@@ -1,54 +1,61 @@
-import { useEffect, useState } from "react";
-import { Volume2, X, BookOpen, ArrowRight } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import {
+  Volume2,
+  Square,
+  LoaderCircle,
+  X,
+  BookOpen,
+  ArrowRight,
+} from "lucide-react";
 import { useLearning } from "../app/context";
+import { playSpeech, stopSpeech, useSpeech } from "../services/speech";
 export function AudioButton({
   text,
   compact = false,
+  label = "听听发音",
 }: {
   text: string;
   compact?: boolean;
+  label?: string;
 }) {
   const { notify } = useLearning();
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [playing, setPlaying] = useState(false);
-  useEffect(() => {
-    if (!("speechSynthesis" in window)) return;
-    const update = () => setVoices(speechSynthesis.getVoices());
-    update();
-    speechSynthesis.addEventListener("voiceschanged", update);
-    return () => {
-      speechSynthesis.removeEventListener("voiceschanged", update);
-      speechSynthesis.cancel();
-    };
-  }, []);
-  const voice = voices.find((v) => v.lang.toLowerCase().startsWith("th"));
-  function speak() {
-    if (!voice) {
-      notify("当前设备没有可用的泰语语音，音频暂不可用。其他练习可以继续。");
-      return;
-    }
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.voice = voice;
-    u.lang = "th-TH";
-    u.rate = 0.82;
-    u.onend = () => setPlaying(false);
-    u.onerror = () => {
-      setPlaying(false);
-      notify("播放失败，请稍后重试。");
-    };
-    setPlaying(true);
-    speechSynthesis.speak(u);
-  }
+  const owner = useRef(Symbol("speech-button")).current;
+  const speech = useSpeech();
+  const mine = speech.owner === owner;
+  const loading = mine && speech.status === "loading";
+  const playing = mine && speech.status === "playing";
+  useEffect(() => () => stopSpeech(owner), [owner, text]);
+  const description = loading
+    ? "取消加载"
+    : playing
+      ? "停止朗读"
+      : label === "试听泰语"
+        ? label
+        : "播放泰语";
   return (
     <button
       className={compact ? "icon-button" : "audio-button"}
-      onClick={speak}
-      aria-label="播放泰语"
-      title={voice ? "播放泰语" : "此设备尚无泰语语音"}
+      onClick={() =>
+        loading || playing ? stopSpeech(owner) : playSpeech(text, owner, notify)
+      }
+      aria-label={description}
+      aria-pressed={loading || playing}
+      title={
+        loading
+          ? "正在等待语音，点击取消"
+          : playing
+            ? "正在朗读，点击停止"
+            : "播放泰语；声音可在网页朗读设置中更换"
+      }
     >
-      <Volume2 size={compact ? 18 : 22} />
-      {!compact && (playing ? "播放中…" : "听听发音")}
+      {loading ? (
+        <LoaderCircle className="speech-spinner" size={18} />
+      ) : playing ? (
+        <Square size={18} />
+      ) : (
+        <Volume2 size={compact ? 18 : 22} />
+      )}
+      {!compact && (loading ? "加载声音…" : playing ? "停止朗读" : label)}
     </button>
   );
 }

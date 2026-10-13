@@ -12,6 +12,7 @@ import {
   Cloud,
   CloudOff,
   HelpCircle,
+  Volume2,
   WifiOff,
 } from "lucide-react";
 import { LearningProvider, useLearning } from "./app/context";
@@ -26,6 +27,7 @@ import { setMeta, db } from "./data/store";
 import { cloud, initializeAuth, syncAccount } from "./services/cloud";
 import { Login } from "./components/Login";
 import type { Word } from "./domain/model";
+import { SpeechSettings } from "./components/SpeechSettings";
 const links = [
   { id: "/", title: "学习首页", Icon: HomeIcon },
   { id: "/vocabulary", title: "词汇学习", Icon: Layers },
@@ -39,6 +41,7 @@ function Workspace() {
   const [editor, setEditor] = useState<Word | true | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [quiz, setQuiz] = useState<Word[] | null>(null);
+  const [speechSettings, setSpeechSettings] = useState(false);
   const [help, setHelp] = useState(false);
   const [login, setLogin] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
@@ -251,6 +254,14 @@ function Workspace() {
             {links.find((l) => l.id === route)?.title ?? "学习首页"}
           </span>
           <div className="topbar-actions">
+            <button
+              className="icon-button"
+              aria-label="朗读设置"
+              title="朗读设置"
+              onClick={() => setSpeechSettings(true)}
+            >
+              <Volume2 size={19} />
+            </button>
             <span className="cloud-status">
               {online ? <Cloud size={15} /> : <WifiOff size={15} />}{" "}
               {!online
@@ -366,6 +377,11 @@ function Workspace() {
       )}{" "}
       {quiz && <Quiz words={quiz} onClose={() => setQuiz(null)} />}{" "}
       {login && <Login onClose={() => setLogin(false)} />}
+      {speechSettings && (
+        <Modal title="朗读设置" onClose={() => setSpeechSettings(false)}>
+          <SpeechSettings />
+        </Modal>
+      )}
       {help && (
         <Modal title="罗马音读音说明" onClose={() => setHelp(false)}>
           <div className="help-content">

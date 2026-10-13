@@ -2076,3 +2076,37 @@ details p {
     transition: none !important;
   }
 }
+
+.speech-settings {
+  padding-top: 8px;
+}
+.speech-settings label {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+}
+.speech-settings select {
+  width: 100%;
+  min-width: 0;
+}
+.speech-sample {
+  margin: 24px 0;
+  font-size: 24px;
+}
+.speech-spinner {
+  animation: speech-spin 1s linear infinite;
+}
+@keyframes speech-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .speech-spinner {
+    animation: none;
+  }
+}
+.icon-button[aria-pressed="true"] {
+  background: #e1eccf;
+  color: #355721;
+}

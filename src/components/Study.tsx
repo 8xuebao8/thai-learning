@@ -1,3 +1,4 @@
+import { useSpeech } from "../services/speech";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
@@ -247,6 +248,7 @@ export function Quiz({
   onClose: () => void;
 }) {
   const { record, notify } = useLearning();
+  const speech = useSpeech();
   const [mode, setMode] = useState<QuizMode>("meaning");
   const [order] = useState(() => shuffle(words));
   const [index, setIndex] = useState(0);
@@ -307,9 +309,7 @@ export function Quiz({
     if (index + 1 === order.length) setFinished(true);
     else setIndex(index + 1);
   }
-  const hasVoice =
-    typeof speechSynthesis !== "undefined" &&
-    speechSynthesis.getVoices().some((v) => v.lang.startsWith("th"));
+  const hasVoice = speech.supported && speech.voices.length > 0;
   return (
     <div className="study-overlay">
       <header className="study-header">
