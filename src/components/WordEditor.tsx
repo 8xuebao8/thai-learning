@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Sparkles, Trash2 } from "lucide-react";
 import { Modal } from "./common";
 import { useLearning } from "../app/context";
 import { wordSchema, type Word } from "../domain/model";
+import { db, completePendingWord } from "../data/store";
 import { generateEntry, cloud } from "../services/cloud";
 export function WordEditor({
   word,
@@ -11,7 +12,7 @@ export function WordEditor({
   word?: Word;
   onClose: () => void;
 }) {
-  const { putWord, notify, account } = useLearning();
+  const { putWord, notify, account, allWords } = useLearning();
   const [form, setForm] = useState({
     thai: word?.thai ?? "",
     roman: word?.roman ?? "",
@@ -20,6 +21,16 @@ export function WordEditor({
     note: word?.note ?? "",
     example: word?.example ?? { thai: "", roman: "", chinese: "" },
   });
+  const [manual, setManual] = useState(!!word && word.enrichment !== "pending");
+  const pendingId = useRef(word?.id ?? crypto.randomUUID());
+  const inFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [generated, setGenerated] = useState(false);
@@ -75,16 +86,18 @@ export function WordEditor({
           explanation,
         };
       }
+      const current = await db.words.get([account, pendingId.current]);
       const w = wordSchema.parse({
         ...form,
         sentence,
-        id: word?.id ?? crypto.randomUUID(),
+        enrichment: "ready",
+        id: pendingId.current,
         theme: word?.theme ?? "personal",
         source: generated
           ? `${word?.source ?? "个人词库"} · AI 辅助草稿，经用户确认`
           : (word?.source ?? "个人录入；用户确认"),
         review: "confirmed",
-        version: word?.version ?? 0,
+        version: current?.version ?? word?.version ?? 0,
         updatedAt: Date.now(),
         dirty: true,
       });
@@ -98,6 +111,68 @@ export function WordEditor({
           : "保存失败，请重试。",
       );
     } finally {
+      setBusy(false);
+    }
+  }
+  async function collect() {
+    if (inFlight.current) return;
+    const thai = form.thai.trim().normalize("NFC");
+    if (!thai || !/[ก-๙]/.test(thai)) {
+      setError("请输入泰语原词或短句。");
+      return;
+    }
+    const existing = allWords.find(
+      (w) =>
+        w.thai.trim().normalize("NFC") === thai && w.id !== pendingId.current,
+    );
+    if (existing) {
+      setError("这个原词已经在词库中，请搜索后编辑已有词条。");
+      return;
+    }
+    inFlight.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const raw = wordSchema.parse({
+        ...form,
+        thai,
+        roman: "",
+        chinese: "",
+        id: pendingId.current,
+        theme: "personal",
+        source: "泰语原词收录，等待自动补全",
+        review: "draft",
+        enrichment: "pending",
+        version: word?.version ?? 0,
+        updatedAt: Date.now(),
+        dirty: true,
+      });
+      const previous = await db.words.get([account, raw.id]);
+      if (previous && previous.enrichment !== "pending")
+        throw new Error("词条已经补全");
+      await putWord({ ...raw, version: previous?.version ?? raw.version });
+      const revision = (await db.words.get([account, raw.id]))!.updatedAt;
+      try {
+        const draft = await generateEntry(thai);
+        if (draft.thai.trim().normalize("NFC") !== thai)
+          throw new Error("生成结果改变了原词，请重试。");
+        if (
+          !(await completePendingWord(account, raw.id, thai, revision, draft))
+        )
+          throw new Error("词条已被修改，未覆盖更新。");
+        if (mounted.current) {
+          notify("已自动收录到词库，读音和含义标为待核对，可随时编辑。");
+          onClose();
+        }
+      } catch (e) {
+        setError(
+          `原词已收录，尚待补全。${e instanceof Error ? e.message : "请稍后重试。"}`,
+        );
+      }
+    } catch {
+      setError("原词保存失败，请重试。");
+    } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -133,7 +208,7 @@ export function WordEditor({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          void save();
+          void (manual ? save() : collect());
         }}
       >
         <p className="muted">把真正遇到的表达，变成自己的学习内容。</p>
@@ -141,6 +216,7 @@ export function WordEditor({
           泰文原文
           <input
             required
+            disabled={busy}
             maxLength={500}
             value={form.thai}
             onChange={(e) => setForm({ ...form, thai: e.target.value })}
@@ -148,200 +224,234 @@ export function WordEditor({
             placeholder="输入词语或短句"
           />
         </label>
-        <div className="generation-box">
-          <button
-            type="button"
-            className="secondary small"
-            disabled={
-              busy || !form.thai.trim() || !cloud || account === "guest"
-            }
-            onClick={() => void generate()}
-          >
-            <Sparkles size={16} />
-            生成草稿
-          </button>
-          <span>
-            {!cloud
-              ? "云服务尚未配置，可以先手动填写。"
-              : account === "guest"
-                ? "登录后使用免费生成。"
-                : "会将原文发送给配置的模型服务，请勿输入敏感材料。"}
-          </span>
-        </div>
-        <div className="form-grid">
-          <label>
-            罗马音
-            <input
-              required
-              maxLength={1000}
-              value={form.roman}
-              onChange={(e) => setForm({ ...form, roman: e.target.value })}
-              placeholder="例如 ngaan¹"
-            />
-          </label>
-          <label>
-            中文含义
-            <input
-              required
-              maxLength={1000}
-              value={form.chinese}
-              onChange={(e) => setForm({ ...form, chinese: e.target.value })}
-              placeholder="这个词的意思"
-            />
-          </label>
-        </div>
-        <label>
-          词性
-          <input
-            value={form.pos}
-            maxLength={100}
-            onChange={(e) => setForm({ ...form, pos: e.target.value })}
-          />
-        </label>
-        <label>
-          发音与使用说明
-          <textarea
-            maxLength={2000}
-            rows={2}
-            value={form.note}
-            onChange={(e) => setForm({ ...form, note: e.target.value })}
-          />
-        </label>
-        <details>
-          <summary>添加例句（可选）</summary>
-          <label>
-            例句泰文
-            <input
-              maxLength={1000}
-              value={form.example.thai}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  example: { ...form.example, thai: e.target.value },
-                })
-              }
-            />
-          </label>
-          <label>
-            例句罗马音
-            <input
-              maxLength={2000}
-              value={form.example.roman}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  example: { ...form.example, roman: e.target.value },
-                })
-              }
-            />
-          </label>
-          <label>
-            例句中文
-            <input
-              maxLength={1000}
-              value={form.example.chinese}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  example: { ...form.example, chinese: e.target.value },
-                })
-              }
-            />
-          </label>
-        </details>
-        <details>
-          <summary>制作拼句练习（可选）</summary>
-          <p className="muted">
-            用于整句。按正确顺序手动划分词块，使用 |
-            分隔；不要自动把每个泰文字母当作词语。
-          </p>
-          <label>
-            泰文词块
-            <input
-              maxLength={2500}
-              value={tileThai}
-              onChange={(e) => {
-                setTileThai(e.target.value);
-                setTileConfirmed(false);
-              }}
-              placeholder="ฉัน | มี | งาน"
-            />
-          </label>
-          <label>
-            词块罗马音
-            <input
-              maxLength={4500}
-              value={tileRoman}
-              onChange={(e) => {
-                setTileRoman(e.target.value);
-                setTileConfirmed(false);
-              }}
-              placeholder="chan⁵ | mii¹ | ngaan¹"
-            />
-          </label>
-          <label>
-            其他正确顺序
-            <textarea
-              rows={2}
-              maxLength={1000}
-              value={alternatives}
-              onChange={(e) => {
-                setAlternatives(e.target.value);
-                setTileConfirmed(false);
-              }}
-              placeholder="按词块序号填写，每行一个答案，例如 3 1 2"
-            />
-          </label>
-          <label>
-            语序说明
-            <textarea
-              rows={2}
-              maxLength={2000}
-              value={explanation}
-              onChange={(e) => setExplanation(e.target.value)}
-            />
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={tileConfirmed}
-              onChange={(e) => setTileConfirmed(e.target.checked)}
-            />
-            我已核对分词和正确顺序
-          </label>
-        </details>
-        <p className="form-note">
-          保存表示你已检查内容。用户确认与专业审核会分别标记。
-        </p>
-        {error && (
-          <p className="inline-error" role="alert">
-            {error}
-          </p>
+        {!manual && (
+          <>
+            <p className="muted">
+              只填泰语即可。系统先收录原词，再自动补全中文、读音和例句；生成内容标为待核对。
+            </p>
+            <p className="small-text">
+              补全时会把原词发送到已配置的模型服务。未配置或额度不足时，原词保留为待补全，不进入测验。
+            </p>
+            {error && (
+              <p className="inline-error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() => setManual(true)}
+              >
+                手动填写
+              </button>
+              <button className="primary" disabled={busy}>
+                {busy ? "收录并补全中…" : "自动收录"}
+              </button>
+            </div>
+          </>
         )}
-        <div className="modal-actions">
-          {word && (
-            <button
-              type="button"
-              className="text-button danger"
-              disabled={busy}
-              onClick={() => void remove()}
-            >
-              <Trash2 size={16} />
-              删除词语
-            </button>
-          )}
-          <button
-            type="button"
-            className="secondary"
-            onClick={onClose}
-            disabled={busy}
-          >
-            取消
-          </button>
-          <button className="primary" disabled={busy}>
-            {busy ? "处理中…" : "确认并保存"}
-          </button>
-        </div>
+        {manual && (
+          <>
+            <div className="generation-box">
+              <button
+                type="button"
+                className="secondary small"
+                disabled={
+                  busy || !form.thai.trim() || !cloud || account === "guest"
+                }
+                onClick={() => void generate()}
+              >
+                <Sparkles size={16} />
+                生成草稿
+              </button>
+              <span>
+                {!cloud
+                  ? "云服务尚未配置，可以先手动填写。"
+                  : account === "guest"
+                    ? "登录后使用免费生成。"
+                    : "会将原文发送给配置的模型服务，请勿输入敏感材料。"}
+              </span>
+            </div>
+            <div className="form-grid">
+              <label>
+                罗马音
+                <input
+                  required
+                  maxLength={1000}
+                  value={form.roman}
+                  onChange={(e) => setForm({ ...form, roman: e.target.value })}
+                  placeholder="例如 ngaan¹"
+                />
+              </label>
+              <label>
+                中文含义
+                <input
+                  required
+                  maxLength={1000}
+                  value={form.chinese}
+                  onChange={(e) =>
+                    setForm({ ...form, chinese: e.target.value })
+                  }
+                  placeholder="这个词的意思"
+                />
+              </label>
+            </div>
+            <label>
+              词性
+              <input
+                value={form.pos}
+                maxLength={100}
+                onChange={(e) => setForm({ ...form, pos: e.target.value })}
+              />
+            </label>
+            <label>
+              发音与使用说明
+              <textarea
+                maxLength={2000}
+                rows={2}
+                value={form.note}
+                onChange={(e) => setForm({ ...form, note: e.target.value })}
+              />
+            </label>
+            <details>
+              <summary>添加例句（可选）</summary>
+              <label>
+                例句泰文
+                <input
+                  maxLength={1000}
+                  value={form.example.thai}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      example: { ...form.example, thai: e.target.value },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                例句罗马音
+                <input
+                  maxLength={2000}
+                  value={form.example.roman}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      example: { ...form.example, roman: e.target.value },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                例句中文
+                <input
+                  maxLength={1000}
+                  value={form.example.chinese}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      example: { ...form.example, chinese: e.target.value },
+                    })
+                  }
+                />
+              </label>
+            </details>
+            <details>
+              <summary>制作拼句练习（可选）</summary>
+              <p className="muted">
+                用于整句。按正确顺序手动划分词块，使用 |
+                分隔；不要自动把每个泰文字母当作词语。
+              </p>
+              <label>
+                泰文词块
+                <input
+                  maxLength={2500}
+                  value={tileThai}
+                  onChange={(e) => {
+                    setTileThai(e.target.value);
+                    setTileConfirmed(false);
+                  }}
+                  placeholder="ฉัน | มี | งาน"
+                />
+              </label>
+              <label>
+                词块罗马音
+                <input
+                  maxLength={4500}
+                  value={tileRoman}
+                  onChange={(e) => {
+                    setTileRoman(e.target.value);
+                    setTileConfirmed(false);
+                  }}
+                  placeholder="chan⁵ | mii¹ | ngaan¹"
+                />
+              </label>
+              <label>
+                其他正确顺序
+                <textarea
+                  rows={2}
+                  maxLength={1000}
+                  value={alternatives}
+                  onChange={(e) => {
+                    setAlternatives(e.target.value);
+                    setTileConfirmed(false);
+                  }}
+                  placeholder="按词块序号填写，每行一个答案，例如 3 1 2"
+                />
+              </label>
+              <label>
+                语序说明
+                <textarea
+                  rows={2}
+                  maxLength={2000}
+                  value={explanation}
+                  onChange={(e) => setExplanation(e.target.value)}
+                />
+              </label>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={tileConfirmed}
+                  onChange={(e) => setTileConfirmed(e.target.checked)}
+                />
+                我已核对分词和正确顺序
+              </label>
+            </details>
+            <p className="form-note">
+              保存表示你已检查内容。用户确认与专业审核会分别标记。
+            </p>
+            {error && (
+              <p className="inline-error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="modal-actions">
+              {word && (
+                <button
+                  type="button"
+                  className="text-button danger"
+                  disabled={busy}
+                  onClick={() => void remove()}
+                >
+                  <Trash2 size={16} />
+                  删除词语
+                </button>
+              )}
+              <button
+                type="button"
+                className="secondary"
+                onClick={onClose}
+                disabled={busy}
+              >
+                取消
+              </button>
+              <button className="primary" disabled={busy}>
+                {busy ? "处理中…" : "确认并保存"}
+              </button>
+            </div>
+          </>
+        )}
       </form>
     </Modal>
   );

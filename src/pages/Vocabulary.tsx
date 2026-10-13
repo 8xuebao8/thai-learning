@@ -10,6 +10,7 @@ export const statusName = {
   learning: "学习中",
   familiar: "熟悉",
   mastered: "已掌握",
+  known: "已认识 · 不再复习",
 };
 export function Vocabulary({
   study,
@@ -20,7 +21,7 @@ export function Vocabulary({
   quiz: (w: Word[]) => void;
   onEdit: (w?: Word) => void;
 }) {
-  const { allWords, events } = useLearning();
+  const { allWords, events, record, notify } = useLearning();
   const [query, setQuery] = useState("");
   const [theme, setTheme] = useState("all");
   const [filter, setFilter] = useState("all");
@@ -34,6 +35,7 @@ export function Vocabulary({
         .toLowerCase()
         .includes(query.toLowerCase()) &&
       (filter === "all" ||
+        (filter === "pending" && w.enrichment === "pending") ||
         (filter === "due"
           ? deriveProgress(events, w.id).due
           : deriveProgress(events, w.id).status === filter)),
@@ -66,6 +68,7 @@ export function Vocabulary({
           onChange={(e) => setFilter(e.target.value)}
         >
           <option value="all">全部状态</option>
+          <option value="pending">待补全</option>
           <option value="due">到期复习</option>
           {Object.entries(statusName).map(([s, label]) => (
             <option key={s} value={s}>
@@ -129,11 +132,32 @@ export function Vocabulary({
                   </span>
                   <AudioButton text={w.thai} compact />
                 </div>
-                <button className="word-learn" onClick={() => study([w])}>
+                <button
+                  className="word-learn"
+                  onClick={() =>
+                    w.enrichment === "pending" ? onEdit(w) : study([w])
+                  }
+                >
                   <span lang="th">{w.thai}</span>
                   <span className="word-roman">{w.roman}</span>
-                  <span className="word-meaning">{w.chinese}</span>
+                  <span className="word-meaning">
+                    {w.enrichment === "pending"
+                      ? "已收录 · 点击补全"
+                      : w.chinese}
+                  </span>
                 </button>
+                {p.status === "known" && (
+                  <button
+                    className="text-button"
+                    onClick={() =>
+                      void record(w.id, "word", false, false, "restore")
+                        .then(() => notify("已恢复学习，将重新加入学习队列。"))
+                        .catch(() => notify("恢复失败，请重试。"))
+                    }
+                  >
+                    恢复学习
+                  </button>
+                )}
                 <footer>
                   <span>
                     {themeName(w.theme)}

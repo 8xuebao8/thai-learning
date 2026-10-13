@@ -69,7 +69,11 @@ export function Home({
             onClick={() =>
               study(
                 allWords
-                  .filter((w) => deriveProgress(events, w.id).status === "new")
+                  .filter(
+                    (w) =>
+                      w.enrichment !== "pending" &&
+                      deriveProgress(events, w.id).status === "new",
+                  )
                   .slice(0, Math.max(1, settings.goal - today)),
               )
             }

@@ -60,6 +60,7 @@ test("learn a word, persist progress, add personal content and build a sentence"
     .getByRole("button", { name: "添加词语", exact: true })
     .first()
     .click();
+  await page.getByRole("button", { name: "手动填写", exact: true }).click();
   await page.getByLabel("泰文原文").fill("ทดสอบ");
   await page.getByLabel("罗马音", { exact: true }).fill("thot⁴-sɔɔp²");
   await page.getByLabel("中文含义").fill("测试");
@@ -109,16 +110,17 @@ test("resumes a card session after a refresh", async ({ page }) => {
   await page.getByRole("button", { name: "开始学习", exact: true }).click();
   await page.getByRole("button", { name: "揭示中文" }).click();
   await page.getByRole("button", { name: "我认识", exact: true }).click();
-  await expect(page.getByText("词汇卡片 · 2 / 10")).toBeVisible();
+  await expect(page.locator(".flash-script")).toContainText("งาน");
   await page.reload();
   await page.getByRole("button", { name: /继续上次的词汇学习/ }).click();
-  await expect(page.getByText("词汇卡片 · 2 / 10")).toBeVisible();
+  await expect(page.locator(".flash-script")).toContainText("งาน");
 });
 test("turns a manually confirmed personal sentence into a tile exercise", async ({
   page,
 }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "添加词语", exact: true }).click();
+  await page.getByRole("button", { name: "手动填写", exact: true }).click();
   await page.getByLabel("泰文原文", { exact: true }).fill("ฉันมีงาน");
   await page.getByLabel("罗马音", { exact: true }).fill("chan⁵ mii¹ ngaan¹");
   await page.getByLabel("中文含义", { exact: true }).fill("我有工作要做。");

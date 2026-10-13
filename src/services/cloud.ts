@@ -101,7 +101,16 @@ async function performSync(account: string) {
         payload: config.settings as any,
         baseVersion: config.version,
         deleted: false,
-        opId: `settings:${JSON.stringify(config.settings)}:${config.version}`,
+        opId: `settings:${config.version}:${Array.from(
+          new Uint8Array(
+            await crypto.subtle.digest(
+              "SHA-256",
+              new TextEncoder().encode(JSON.stringify(config.settings)),
+            ),
+          ),
+        )
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")}`,
       });
     const before = await cloud.auth.getSession();
     if (before.data.session?.user.id !== account)
@@ -184,6 +193,7 @@ export async function generateEntry(text: string) {
   if (!cloud) throw new Error("云服务尚未配置，请手动填写。");
   const { data, error } = await cloud.functions.invoke("generate-entry", {
     body: { text, requestId: crypto.randomUUID() },
+    timeout: 35000,
   });
   if (error)
     throw new Error(

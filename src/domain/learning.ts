@@ -16,7 +16,16 @@ export function deriveProgress(
     wrong = 0,
     nextReview: number | null = null,
     lastReview: number | null = null;
+  let known = false;
   for (const e of unique) {
+    if (e.mode === "known" || e.mode === "restore") {
+      known = e.mode === "known";
+      stage = -1;
+      nextReview = null;
+      lastReview = e.at;
+      continue;
+    }
+    if (known) continue;
     lastReview = e.at;
     if (e.result === "wrong") {
       wrong++;
@@ -37,8 +46,9 @@ export function deriveProgress(
   }
   return {
     stage,
-    status:
-      stage < 0
+    status: known
+      ? "known"
+      : stage < 0
         ? "new"
         : stage < 2
           ? "learning"

@@ -1,3 +1,4 @@
+import { LongTermGoals } from "../components/LongTermGoals";
 import { useState, useRef } from "react";
 import {
   Download,
@@ -29,7 +30,10 @@ export function Progress({ onLogin }: { onLogin: () => void }) {
   const learned = stats.filter((p) => p.status !== "new").length;
   const mastered = stats.filter((p) => p.status === "mastered").length;
   const correct = events.filter(
-    (e) => e.result === "correct" && !e.assisted,
+    (e) =>
+      e.result === "correct" &&
+      !e.assisted &&
+      !["known", "restore"].includes(e.mode),
   ).length;
   const days = Array.from(
     { length: 7 },
@@ -161,6 +165,7 @@ export function Progress({ onLogin }: { onLogin: () => void }) {
           </div>
         </div>
       </div>
+      <LongTermGoals />
       <div className="progress-layout">
         <section className="panel">
           <h2>过去 7 天</h2>

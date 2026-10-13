@@ -9,7 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useLearning } from "../app/context";
-import { shuffle } from "../domain/learning";
+import { shuffle, deriveProgress } from "../domain/learning";
 import { getMeta, setMeta } from "../data/store";
 import type { Word } from "../domain/model";
 import { AudioButton, Script } from "./common";
@@ -28,12 +28,20 @@ export function Study({
   onClose: () => void;
   onQuiz: (words: Word[]) => void;
 }) {
-  const { allWords, record, account, notify } = useLearning();
+  const { allWords, events, record, account, notify } = useLearning();
   const [ids, setIds] = useState(
-    session.ids.filter((id) => allWords.some((w) => w.id === id)),
+    session.ids.filter(
+      (id) =>
+        allWords.some((w) => w.id === id && w.enrichment !== "pending") &&
+        deriveProgress(events, id).status !== "known",
+    ),
   );
   const [index, setIndex] = useState(
-    Math.min(session.index, Math.max(0, ids.length - 1)),
+    Math.min(
+      session.ids.slice(0, session.index).filter((id) => ids.includes(id))
+        .length,
+      Math.max(0, ids.length - 1),
+    ),
   );
   const [revealed, setRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -53,29 +61,53 @@ export function Study({
     if (!word || busy) return;
     setBusy(true);
     try {
-      await record(word.id, "word", correct, false, "flashcard", {
-        key: `${account}:session`,
-        value:
-          index + 1 >= ids.length
+      const nextIds = correct ? ids.filter((id) => id !== word.id) : ids;
+      const nextIndex = correct
+        ? Math.min(index, Math.max(0, nextIds.length - 1))
+        : index + 1;
+      const finished = correct
+        ? index >= nextIds.length
+        : nextIndex >= ids.length;
+      await record(
+        word.id,
+        "word",
+        correct,
+        false,
+        correct ? "known" : "flashcard",
+        {
+          key: `${account}:session`,
+          value: finished
             ? null
             : {
-                ids,
-                index: index + 1,
+                ids: nextIds,
+                index: nextIndex,
                 mode: session.mode,
                 review: session.review,
               },
-      });
+        },
+      );
       setScores((s) => [...s, { id: word.id, correct }]);
-      if (index + 1 >= ids.length) {
+      if (finished) {
         setDone(true);
         await setMeta(`${account}:session`, null);
-      } else setIndex(index + 1);
+      } else {
+        setIds(nextIds);
+        setIndex(nextIndex);
+        setRevealed(false);
+      }
     } catch {
       notify("保存失败，本题未跳过，请重试。");
     } finally {
       setBusy(false);
     }
   }
+  const difficultIds = [
+    ...new Set(scores.filter((s) => !s.correct).map((s) => s.id)),
+  ].filter(
+    (id) =>
+      allWords.some((w) => w.id === id && w.enrichment !== "pending") &&
+      deriveProgress(events, id).status !== "known",
+  );
   function finish() {
     notify(
       `本次学习完成 ${scores.length} 次回忆，${scores.filter((s) => s.correct).length} 次认识，${scores.filter((s) => !s.correct).length} 次需要多练。`,
@@ -95,13 +127,15 @@ export function Study({
             本次完成 {scores.length} 次回忆 ·{" "}
             {scores.filter((s) => s.correct).length} 次认识
           </p>
-          <p className="muted">难词会更早安排复习，认识的词也会定期回来。</p>
+          <p className="muted">
+            难词会继续安排复习；标记认识的词不再自动出现，可在词库中恢复学习。
+          </p>
           <div className="button-row">
-            {scores.some((s) => !s.correct) && (
+            {difficultIds.length > 0 && (
               <button
                 className="secondary"
                 onClick={() => {
-                  setIds(scores.filter((s) => !s.correct).map((s) => s.id));
+                  setIds(difficultIds);
                   setIndex(0);
                   setDone(false);
                   setScores([]);
@@ -204,7 +238,7 @@ export function Study({
           </button>
           <button
             className="primary"
-            disabled={!revealed || busy}
+            disabled={busy}
             onClick={() => void mark(true)}
           >
             <Check size={18} />
@@ -219,7 +253,7 @@ export function Study({
             <ArrowLeft size={16} />
             上一张
           </button>
-          <span>先回忆，再揭示。进度会自动保存。</span>
+          <span>已认识可直接跳过，不再自动复习。</span>
           <button
             disabled={index === ids.length - 1 || busy}
             onClick={() => setIndex(index + 1)}

@@ -158,3 +158,42 @@ export async function copyGuestTo(account: string) {
   const backup = await exportBackup("guest");
   await importBackup(account, backup);
 }
+
+// Only the same pending revision may accept an asynchronous model response.
+export async function completePendingWord(
+  account: string,
+  id: string,
+  thai: string,
+  revision: number,
+  draft: Pick<Word, "thai" | "roman" | "chinese" | "pos" | "note" | "example">,
+): Promise<boolean> {
+  return db.transaction("rw", db.words, async () => {
+    const current = await db.words.get([account, id]);
+    if (
+      !current ||
+      current.deleted ||
+      current.enrichment !== "pending" ||
+      current.thai !== thai ||
+      current.updatedAt !== revision
+    )
+      return false;
+    await db.words.put({
+      ...wordSchema.parse({
+        ...current,
+        roman: draft.roman,
+        chinese: draft.chinese,
+        pos: draft.pos,
+        note: draft.note,
+        example: draft.example,
+        thai,
+        enrichment: "ready",
+        review: "draft",
+        source: "AI 自动补全 · 未经人工核对",
+        updatedAt: Date.now(),
+        dirty: true,
+      }),
+      account,
+    });
+    return true;
+  });
+}

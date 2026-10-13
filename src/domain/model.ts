@@ -1,55 +1,61 @@
 import { z } from "zod";
 export const themes = ["work", "campus", "life", "personal"] as const;
 export type Theme = (typeof themes)[number];
-export const wordSchema = z.object({
-  id: z.string().min(1).max(100),
-  thai: z.string().trim().min(1).max(500),
-  roman: z.string().trim().min(1).max(1000),
-  chinese: z.string().trim().min(1).max(1000),
-  theme: z.enum(themes),
-  pos: z.string().max(100),
-  note: z.string().max(2000),
-  example: z.object({
-    thai: z.string().max(1000),
-    roman: z.string().max(2000),
-    chinese: z.string().max(1000),
-  }),
-  source: z.string().max(1000),
-  sentence: z
-    .object({
-      tokens: z
-        .array(
-          z.object({
-            thai: z.string().trim().min(1).max(100),
-            roman: z.string().trim().min(1).max(200),
-          }),
-        )
-        .min(2)
-        .max(20),
-      alternatives: z
-        .array(z.array(z.number().int().nonnegative()).max(20))
-        .max(20),
-      explanation: z.string().max(2000),
-    })
-    .superRefine((s, ctx) => {
-      for (const a of s.alternatives)
-        if (
-          a.length !== s.tokens.length ||
-          new Set(a).size !== a.length ||
-          a.some((i) => i >= s.tokens.length)
-        )
-          ctx.addIssue({
-            code: "custom",
-            message: "替代答案必须使用每个词块一次。",
-          });
-    })
-    .optional(),
-  review: z.enum(["draft", "confirmed", "reviewed"]),
-  version: z.number().int().nonnegative(),
-  dirty: z.boolean(),
-  deleted: z.boolean().optional(),
-  updatedAt: z.number().nonnegative(),
-});
+export const wordSchema = z
+  .object({
+    id: z.string().min(1).max(100),
+    thai: z.string().trim().min(1).max(500),
+    roman: z.string().trim().max(1000),
+    chinese: z.string().trim().max(1000),
+    theme: z.enum(themes),
+    pos: z.string().max(100),
+    note: z.string().max(2000),
+    example: z.object({
+      thai: z.string().max(1000),
+      roman: z.string().max(2000),
+      chinese: z.string().max(1000),
+    }),
+    source: z.string().max(1000),
+    sentence: z
+      .object({
+        tokens: z
+          .array(
+            z.object({
+              thai: z.string().trim().min(1).max(100),
+              roman: z.string().trim().min(1).max(200),
+            }),
+          )
+          .min(2)
+          .max(20),
+        alternatives: z
+          .array(z.array(z.number().int().nonnegative()).max(20))
+          .max(20),
+        explanation: z.string().max(2000),
+      })
+      .superRefine((s, ctx) => {
+        for (const a of s.alternatives)
+          if (
+            a.length !== s.tokens.length ||
+            new Set(a).size !== a.length ||
+            a.some((i) => i >= s.tokens.length)
+          )
+            ctx.addIssue({
+              code: "custom",
+              message: "替代答案必须使用每个词块一次。",
+            });
+      })
+      .optional(),
+    enrichment: z.enum(["pending", "ready"]).optional(),
+    review: z.enum(["draft", "confirmed", "reviewed"]),
+    version: z.number().int().nonnegative(),
+    dirty: z.boolean(),
+    deleted: z.boolean().optional(),
+    updatedAt: z.number().nonnegative(),
+  })
+  .superRefine((w, ctx) => {
+    if (w.enrichment !== "pending" && (!w.roman || !w.chinese))
+      ctx.addIssue({ code: "custom", message: "可学习词条需要读音和含义" });
+  });
 export type Word = z.infer<typeof wordSchema>;
 export const eventSchema = z.object({
   id: z.string().min(1).max(100),
@@ -62,8 +68,26 @@ export const eventSchema = z.object({
   deviceId: z.string().max(100),
 });
 export type LearningEvent = z.infer<typeof eventSchema>;
+export const longTermSchema = z.object({
+  level: z.enum(["Superior", "Distinguished"]),
+  wordTarget: z.number().int().min(1).max(100000),
+  grammarTarget: z.number().int().min(1).max(5000),
+  baselineWords: z.number().int().min(0).max(100000),
+  grammar: z
+    .array(
+      z.object({
+        id: z.string().max(100),
+        title: z.string().trim().min(1).max(100),
+        mastered: z.boolean(),
+      }),
+    )
+    .max(500),
+  skills: z.array(z.string().max(80)).max(20),
+});
+export type LongTermGoal = z.infer<typeof longTermSchema>;
 export const settingsSchema = z.object({
   goal: z.number().int().min(1).max(200),
+  longTerm: longTermSchema.optional(),
   display: z.enum(["both", "roman", "thai"]),
   timezone: z.literal("Asia/Bangkok"),
 });
@@ -95,7 +119,7 @@ export type Exercise = {
 };
 export type Progress = {
   stage: number;
-  status: "new" | "learning" | "familiar" | "mastered";
+  status: "new" | "learning" | "familiar" | "mastered" | "known";
   correct: number;
   wrong: number;
   nextReview: number | null;

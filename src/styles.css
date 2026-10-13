@@ -2110,3 +2110,41 @@ details p {
   background: #e1eccf;
   color: #355721;
 }
+
+.status.known {
+  background: #e9e7f4;
+  color: #67518b;
+}
+.long-term-goals {
+  margin-bottom: 24px;
+}
+.long-term-goals label:not(.checkbox-label) {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.goal-meters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
+  margin: 24px 0;
+}
+.goal-meters progress {
+  display: block;
+  width: 100%;
+  height: 14px;
+  margin: 12px 0;
+  accent-color: #71895e;
+}
+.grammar-checklist > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.goal-skill {
+  margin: 14px 0;
+}
+.long-term-goals .button-row {
+  margin-top: 20px;
+}

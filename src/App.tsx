@@ -1,3 +1,4 @@
+import { deriveProgress } from "./domain/learning";
 import { useEffect, useState, useRef } from "react";
 import { liveQuery } from "dexie";
 import {
@@ -35,7 +36,7 @@ const links = [
   { id: "/progress", title: "学习进度", Icon: ChartNoAxesCombined },
 ];
 function Workspace() {
-  const { account, setAccount, allWords, loaded, notice, notify } =
+  const { account, setAccount, allWords, events, loaded, notice, notify } =
     useLearning();
   const [route, setRoute] = useState(location.hash.slice(1) || "/");
   const [editor, setEditor] = useState<Word | true | null>(null);
@@ -177,6 +178,11 @@ function Workspace() {
     };
   }, []);
   function start(words: Word[], review = false) {
+    words = words.filter(
+      (w) =>
+        w.enrichment !== "pending" &&
+        deriveProgress(events, w.id).status !== "known",
+    );
     if (!words.length) {
       notify("这组内容已经学过了，可以从词汇页面继续练习或复习。");
       return;
@@ -190,6 +196,11 @@ function Workspace() {
     setQuiz(null);
   }
   function beginQuiz(words: Word[]) {
+    words = words.filter(
+      (w) =>
+        w.enrichment !== "pending" &&
+        deriveProgress(events, w.id).status !== "known",
+    );
     if (words.length < 2) {
       notify("至少两个词语才能组成选择题，可以先添加更多内容。");
       setSession(null);
