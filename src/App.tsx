@@ -1,5 +1,5 @@
 import { deriveProgress } from "./domain/learning";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { liveQuery } from "dexie";
 import {
   Home as HomeIcon,
@@ -25,7 +25,7 @@ import { WordEditor } from "./components/WordEditor";
 import { Study, Quiz, savedSession, type Session } from "./components/Study";
 import { Modal } from "./components/common";
 import { setMeta, db } from "./data/store";
-import { cloud, initializeAuth, syncAccount } from "./services/cloud";
+import { syncAccount } from "./services/cloud";
 import { Login } from "./components/Login";
 import type { Word } from "./domain/model";
 import { SpeechSettings } from "./components/SpeechSettings";
@@ -36,8 +36,7 @@ const links = [
   { id: "/progress", title: "学习进度", Icon: ChartNoAxesCombined },
 ];
 function Workspace() {
-  const { account, setAccount, allWords, events, loaded, notice, notify } =
-    useLearning();
+  const { account, allWords, events, loaded, notice, notify } = useLearning();
   const [route, setRoute] = useState(location.hash.slice(1) || "/");
   const [editor, setEditor] = useState<Word | true | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -50,7 +49,7 @@ function Workspace() {
   const [resume, setResume] = useState<Session | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   const [pending, setPending] = useState(false);
-  const identity = useRef("guest");
+
   useEffect(() => {
     const fn = () => {
       setRoute(location.hash.slice(1) || "/");
@@ -68,23 +67,6 @@ function Workspace() {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
     };
-  }, []);
-  useEffect(() => {
-    if (!cloud) return;
-    void initializeAuth()
-      .then((s) => setAccount(s?.user.id ?? "guest"))
-      .catch((e) => notify(e.message));
-    const { data } = cloud.auth.onAuthStateChange((_event, s) => {
-      const next = s?.user.id ?? "guest";
-      setAccount(next);
-      if (identity.current !== next) {
-        setSession(null);
-        setQuiz(null);
-        setEditor(null);
-        identity.current = next;
-      }
-    });
-    return () => data.subscription.unsubscribe();
   }, []);
   useEffect(() => {
     const sub = liveQuery(async () => {
@@ -111,13 +93,13 @@ function Workspace() {
     let failures = 0;
     const sync = async () => {
       if (!active || document.visibilityState === "hidden") return;
-      setSyncState("同步中");
+      setSyncState("保存中");
       try {
         await syncAccount(account);
-        if (active) setSyncState("已同步");
+        if (active) setSyncState("已保存到云端");
         failures = 0;
       } catch {
-        if (active) setSyncState("待同步");
+        if (active) setSyncState("保存失败，将自动重试");
         failures++;
       }
       if (active)
@@ -250,7 +232,9 @@ function Workspace() {
             <span>
               <b>我的学习空间</b>
               <small>
-                {account === "guest" ? "本机保存进度" : "私人账号 · 云端同步"}
+                {account === "guest"
+                  ? "临时体验 · 刷新清空"
+                  : "私人账号 · 自动保存"}
               </small>
             </span>
             <ArrowRight size={15} />
@@ -278,10 +262,12 @@ function Workspace() {
               {!online
                 ? "离线"
                 : account === "guest"
-                  ? "本机模式"
-                  : pending && syncState !== "同步中"
-                    ? "待同步"
-                    : syncState || "待同步"}
+                  ? "临时体验"
+                  : syncState.startsWith("保存失败")
+                    ? syncState
+                    : pending && syncState !== "保存中"
+                      ? "等待保存到云端"
+                      : syncState || "正在加载云端"}
             </span>
             <button
               className="icon-button"
@@ -293,6 +279,7 @@ function Workspace() {
             <button
               className="secondary small add-top"
               onClick={() => setEditor(true)}
+              disabled={!loaded}
             >
               <Plus size={16} />
               添加词语
@@ -307,7 +294,10 @@ function Workspace() {
         <main className="page-content">
           {!loaded ? (
             <div className="empty">
-              <p>正在打开你的学习空间…</p>
+              <p>正在加载云端学习空间，请保持联网。</p>
+              <button className="secondary" onClick={() => location.reload()}>
+                重新加载
+              </button>
             </div>
           ) : route === "/vocabulary" ? (
             <Vocabulary
@@ -339,7 +329,10 @@ function Workspace() {
         <footer className="app-footer">
           <span>THAI EVERYDAY · 学一点，用一点。</span>
           <span>
-            <CloudOff size={13} /> 本地优先，按需同步
+            <CloudOff size={13} />{" "}
+            {account === "guest"
+              ? "临时体验，刷新清空"
+              : "已登录，自动保存到云端"}
           </span>
         </footer>
       </div>
@@ -424,10 +417,14 @@ function Workspace() {
     </div>
   );
 }
+function AccountWorkspace() {
+  const { account, epoch } = useLearning();
+  return <Workspace key={`${account}:${epoch ?? -1}`} />;
+}
 export default function App() {
   return (
     <LearningProvider>
-      <Workspace />
+      <AccountWorkspace />
     </LearningProvider>
   );
 }

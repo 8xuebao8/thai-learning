@@ -27,7 +27,8 @@ const tasks = {
 const skills = ["listening", "speaking", "reading", "writing"];
 const labels = ["听力", "口语", "阅读", "写作"];
 export function LongTermGoals() {
-  const { settings, putSettings, allWords, events, notify } = useLearning();
+  const { settings, putSettings, allWords, events, notify, account } =
+    useLearning();
   const [draft, setDraft] = useState<LongTermGoal>(
     settings.longTerm ?? initial,
   );
@@ -270,7 +271,11 @@ export function LongTermGoals() {
           {busy ? "保存中…" : "保存总目标"}
         </button>
         <span className="muted">
-          {dirty ? "有未保存修改" : "保存后随账号同步，也包含在备份中"}
+          {dirty
+            ? "有未保存修改"
+            : account === "guest"
+              ? "仅本次体验有效，刷新清空"
+              : "保存后自动上传云端"}
         </span>
       </div>
     </section>

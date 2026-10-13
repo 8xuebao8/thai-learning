@@ -41,7 +41,7 @@ test("email login masks the password and reports a mocked credential error", asy
     expect(requests).toBe(0);
   }
 });
-test("learn a word, persist progress, add personal content and build a sentence", async ({
+test("learn a word, track temporary progress, add personal content and build a sentence", async ({
   page,
 }) => {
   await page.goto("/");
@@ -55,7 +55,7 @@ test("learn a word, persist progress, add personal content and build a sentence"
   await page.getByRole("button", { name: "结束本次学习" }).click();
   await page.reload();
   await page.getByRole("link", { name: "学习进度" }).click();
-  await expect(page.getByTestId("attempt-total")).toHaveText("1");
+  await expect(page.getByTestId("attempt-total")).toHaveText("0");
   await page
     .getByRole("button", { name: "添加词语", exact: true })
     .first()
@@ -92,7 +92,7 @@ test("wrong answer feedback and target settings work", async ({ page }) => {
   await page.getByLabel("每日学习目标").fill("15");
   await page.getByLabel("每日学习目标").blur();
   await page.reload();
-  await expect(page.getByLabel("每日学习目标")).toHaveValue("15");
+  await expect(page.getByLabel("每日学习目标")).toHaveValue("10");
 });
 test("Thai-first tiles can reveal assistance without nested buttons", async ({
   page,
@@ -105,15 +105,18 @@ test("Thai-first tiles can reveal assistance without nested buttons", async ({
     "rao¹",
   );
 });
-test("resumes a card session after a refresh", async ({ page }) => {
+test("guest refresh discards the card session", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "开始学习", exact: true }).click();
   await page.getByRole("button", { name: "揭示中文" }).click();
   await page.getByRole("button", { name: "我认识", exact: true }).click();
   await expect(page.locator(".flash-script")).toContainText("งาน");
   await page.reload();
-  await page.getByRole("button", { name: /继续上次的词汇学习/ }).click();
-  await expect(page.locator(".flash-script")).toContainText("งาน");
+  await expect(
+    page.getByRole("button", { name: /继续上次的词汇学习/ }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "开始学习", exact: true }).click();
+  await expect(page.locator(".flash-script")).toContainText("ประชุม");
 });
 test("turns a manually confirmed personal sentence into a tile exercise", async ({
   page,

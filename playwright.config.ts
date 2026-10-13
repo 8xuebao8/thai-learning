@@ -5,6 +5,12 @@ export default defineConfig({
   use: { baseURL: "http://127.0.0.1:5173" },
   webServer: {
     command: "npm run dev -- --port 5173",
+    env: {
+      VITE_SUPABASE_URL:
+        process.env.VITE_SUPABASE_URL || "https://test.supabase.co",
+      VITE_SUPABASE_PUBLISHABLE_KEY:
+        process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "test-public-key",
+    },
     url: "http://127.0.0.1:5173",
     reuseExistingServer: !process.env.CI,
   },

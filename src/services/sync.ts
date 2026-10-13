@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { db } from "../data/store";
+import { db, getMeta } from "../data/store";
 import { wordSchema, eventSchema, settingsSchema } from "../domain/model";
 export const changeSchema = z.object({
   seq: z.number().int().nonnegative(),
@@ -14,6 +14,7 @@ export async function applyChanges(
   account: string,
   input: unknown[],
   cursor: number,
+  epoch?: number,
 ): Promise<void> {
   const changes = z.array(changeSchema).parse(input);
   // Validate the whole page before changing the database, including payloads.
@@ -39,6 +40,11 @@ export async function applyChanges(
     db.configs,
     db.meta,
     async () => {
+      if (
+        epoch !== undefined &&
+        (await getMeta(`${account}:epoch`, -1)) !== epoch
+      )
+        return;
       for (const c of validated) {
         if (c.kind === "event") {
           const event = eventSchema.parse(c.payload);

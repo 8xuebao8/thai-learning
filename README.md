@@ -1,6 +1,6 @@
 # 泰语日常 Thai Everyday
 
-面向已经能用泰语日常交流的中文使用者。React 网页提供词汇卡、五类测验、拼句、个人词库和间隔复习；浏览器先保存，配置 Supabase 后跨设备同步。网页已发布到 GitHub Pages。
+面向已经能用泰语日常交流的中文使用者。React 网页提供词汇卡、五类测验、拼句、个人词库和间隔复习；访客临时体验刷新即清空，登录后自动保存到云端。网页已发布到 GitHub Pages。
 
 在线使用：[泰语日常](https://8xuebao8.github.io/thai-learning/) · 源码仓库：[8xuebao8/thai-learning](https://github.com/8xuebao8/thai-learning)。登录使用自己创建的邮箱密码账号，云数据保存在新加坡 Supabase。
 
@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-打开终端显示的地址，通常是 `http://127.0.0.1:5173`。没有环境配置时自动使用本机模式，不会伪造登录、同步或 AI 生成成功。
+打开终端显示的地址，通常是 `http://127.0.0.1:5173`。没有环境配置时自动使用临时体验模式，刷新清空，不会伪造登录、同步或 AI 生成成功。
 
 ```bash
 npm test
@@ -38,7 +38,7 @@ npm run test:e2e
 - 稳定词块 ID，撤回、重置、提示、答案揭示、合理替代答案及三种显示模式。
 - 个人词条编辑、删除、例句与可选人工分词的个人拼句练习。
 - 单词与句型分别按 1、3、7、14、30、60 天安排复习；提示不提升等级。
-- JSON 备份导入导出；坏文件不覆盖现有数据。
+- 临时访客体验、账号自动云端保存；两次确认后初始化账号学习数据。
 - Supabase 邮箱＋密码登录、账号隔离、事件去重、版本冲突副本、删除墓碑、分页同步。
 - 免费生成代理需单独配置，所有返回内容为待确认草稿。
 
@@ -47,7 +47,7 @@ npm run test:e2e
 ## 配置 Supabase 免费同步
 
 1. 创建 Supabase Free 项目，地区选择 Southeast Asia (Singapore)。
-2. 在 SQL Editor 执行 `supabase/migrations/202610130001_learning.sql`，仅对新项目执行一次；后续变更应使用新迁移。
+2. 在 SQL Editor 按文件名顺序执行 `supabase/migrations/` 下的迁移，每个只执行一次。已有项目只执行尚未应用的迁移。
 3. Authentication → Sign In / Providers 确认 Email 已开启。个人工具可关闭 Allow new users to sign up；保持 Confirm email 开启。
 4. Authentication → Users → Add user → Create new user，由本人填写登录邮箱与登录密码。个人账号可保留 Auto confirm user。登录密码与数据库密码独立；密码不进入工程或仓库。
 5. 复制 `.env.example` 为 `.env`，只填写项目 URL 和 publishable key，重启开发服务器。
@@ -58,7 +58,7 @@ insert into public.allowed_users(user_id)
 values ('替换为自己的用户UUID') on conflict do nothing;
 ```
 
-7. 网页点击“登录同步”，填写邮箱和密码，再点击“立即同步”。只有允许名单中的账号能够同步或调用生成接口。
+7. 网页点击“登录同步”，填写邮箱和密码；之后自动加载和保存云端数据。只有允许名单中的账号能够同步或调用生成接口。
 8. Authentication → URL Configuration 的 Site URL 设置为正式网页地址；后续若启用邮件确认或密码恢复，需配置对应的回跳地址。邮箱密码登录不需要 GitHub OAuth 应用。
 
 当前连接目标为 `thai-learning-sg`，项目 ID 为 `hvpmjhsommuewiwrhozl`。2026-10-13 已执行数据库迁移，确认 7 张表均启用 RLS。个人账号与允许名单已配置；邮箱登录、刷新后会话保持与真实设置上传已验证；多设备同步仍需正式发布后验收。
@@ -70,7 +70,9 @@ VITE_SUPABASE_PUBLISHABLE_KEY=替换为公开的publishable_key
 
 公开配置可以被访问者看到，权限由真实用户身份和数据库 RLS 强制执行。数据库 secret key、service role、AI key 和 OAuth client secret 不能放在任何 `VITE_` 配置里。
 
-账号与本机访客内容分开保存。登录后需要保留之前的访客数据时，在学习进度页选择“合并本机访客记录”。发生词条编辑冲突时保留“同步冲突副本”，原词条使用云端版本；可在我的词库中检查并删除不需要的副本。设置冲突暂保存在本地恢复记录，界面使用云端设置。
+访客数据只放在当前页面内存，刷新清空，登录后不会合并。账号修改自动上传，顶部显示保存状态；网络失败时自动重试，请等待“已保存到云端”再关闭页面。
+
+学习进度页的「一键初始化」先确认清除范围，再输入“确认初始化”并第二次确认。清空个人词库、学习记录、已认识标记、目标和学习设置，保留账号与系统课程。数据库版本保护阻止旧设备恢复已清空数据；旧客户端需要刷新才能继续保存。
 
 ## 发布 GitHub Pages
 
@@ -90,7 +92,7 @@ PAGES_BASE=/thai-learning/ npm run preview
 
 打开 `http://127.0.0.1:4173/thai-learning/`。路由使用 `#/vocabulary` 等，刷新不需要服务器路由重写。
 
-生产构建生成 manifest 和带版本的 Service Worker。首次完整加载后缓存应用和内置课程；离线可用这些内容，本机记录不会等待网络。新版本在未进行卡片或测验时提示更新。清除浏览器数据会删除缓存和未同步内容，定期导出备份。
+生产构建生成 manifest 和带版本的 Service Worker。首次完整加载后缓存应用和内置课程；访客离线也可临时体验，刷新仍清空。账号数据加载需要联网，使用中断网的修改等待自动重试，未上传前不显示保存成功。新版本在未进行卡片或测验时提示更新。
 
 ## 可选免费生成
 
@@ -121,7 +123,7 @@ supabase functions deploy generate-entry
 
 单元测试包括复习阶段、稳定词块、数据恢复、备份拒绝、冲突合并、账号切换、字节批次限制。SQL 在本地 PGlite PostgreSQL 中执行，测试 RLS、禁止直接写入、RPC 去重、旧版本冲突、生成额度和崩溃恢复。浏览器测试覆盖桌面和手机。
 
-真实邮箱登录、Supabase 云端同步、Edge Function 运行和模型输出需要你的项目配置后再验收，本地测试不能代替实际云端测试。免费 Supabase 存在活动不足暂停机制，不含免费自动数据库备份；同步和导出备份一起使用。
+真实邮箱登录、Supabase 云端同步、Edge Function 运行和模型输出需要项目配置后验收，本地测试不能代替实际云端测试。免费 Supabase 存在活动不足暂停机制，不含免费自动数据库备份。
 
 ## 项目文件
 

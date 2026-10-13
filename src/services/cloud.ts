@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { db, getMeta, setMeta } from "../data/store";
+import { db, getMeta, setMeta, adoptEpoch } from "../data/store";
 import { applyChanges, changeSchema } from "./sync";
 import { takeBatch } from "./batch";
 const url = import.meta.env.VITE_SUPABASE_URL;
@@ -59,12 +59,16 @@ const replySchema = z.object({
   cursor: z.number().int().nonnegative(),
   more: z.boolean(),
   conflicts: z.array(changeSchema),
+  epoch: z.number().int().nonnegative(),
+  reset: z.boolean(),
 });
 const active = new Map<string, Promise<void>>();
 export function syncAccount(account: string): Promise<void> {
   const running = active.get(account);
   if (running) return running;
-  const operation = performSync(account).finally(() => active.delete(account));
+  const operation = performSync(account).finally(() => {
+    if (active.get(account) === operation) active.delete(account);
+  });
   active.set(account, operation);
   return operation;
 }
@@ -76,6 +80,7 @@ async function performSync(account: string) {
   let rounds = 0;
   let more = true;
   while (more && rounds++ < 500) {
+    const epoch = await getMeta<number>(`${account}:epoch`, -1);
     const queuedWords = (
       await db.words.where("account").equals(account).toArray()
     ).filter((w) => w.dirty);
@@ -116,7 +121,7 @@ async function performSync(account: string) {
     if (before.data.session?.user.id !== account)
       throw new Error("登录账号已改变，同步已停止。本机数据已保留。");
     // Bind the request to the exact verified session token, not mutable SDK auth.
-    const response = await fetch(`${url}/rest/v1/rpc/sync_learning`, {
+    const response = await fetch(`${url}/rest/v1/rpc/sync_learning_v2`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -128,6 +133,7 @@ async function performSync(account: string) {
         p_records: records,
         p_events: pendingEvents.map(({ account: _, pending: __, ...e }) => e),
         p_after: cursor,
+        p_epoch: epoch < 0 ? null : epoch,
       }),
     });
     const after = await cloud.auth.getSession();
@@ -138,37 +144,54 @@ async function performSync(account: string) {
         "同步未完成，请检查项目是否暂停、账号权限或网络连接。本机数据已保留。",
       );
     const reply = replySchema.parse(await response.json());
-    await db.transaction("rw", db.words, db.events, db.configs, async () => {
-      for (const ack of reply.acks) {
-        if (ack.id === "settings") {
-          const current = await db.configs.get(account);
-          if (current && config)
-            await db.configs.put({
-              ...current,
-              version: ack.version,
-              dirty:
-                JSON.stringify(current.settings) !==
-                JSON.stringify(config.settings),
-            });
-        } else {
-          const snapshot = pendingWords.find((w) => w.id === ack.id);
-          const current = await db.words.get([account, ack.id]);
-          if (current && snapshot)
-            await db.words.put({
-              ...current,
-              version: ack.version,
-              dirty: current.updatedAt !== snapshot.updatedAt,
-            });
+    if (reply.reset) {
+      await adoptEpoch(account, epoch, reply.epoch);
+      more = true;
+      continue;
+    }
+    if ((await getMeta(`${account}:epoch`, -1)) !== epoch) {
+      more = true;
+      continue;
+    }
+    await db.transaction(
+      "rw",
+      db.words,
+      db.events,
+      db.configs,
+      db.meta,
+      async () => {
+        if ((await getMeta(`${account}:epoch`, -1)) !== epoch) return;
+        for (const ack of reply.acks) {
+          if (ack.id === "settings") {
+            const current = await db.configs.get(account);
+            if (current && config)
+              await db.configs.put({
+                ...current,
+                version: ack.version,
+                dirty:
+                  JSON.stringify(current.settings) !==
+                  JSON.stringify(config.settings),
+              });
+          } else {
+            const snapshot = pendingWords.find((w) => w.id === ack.id);
+            const current = await db.words.get([account, ack.id]);
+            if (current && snapshot)
+              await db.words.put({
+                ...current,
+                version: ack.version,
+                dirty: current.updatedAt !== snapshot.updatedAt,
+              });
+          }
         }
-      }
-      for (const id of reply.eventAcks) {
-        const e = await db.events.get([account, id]);
-        if (e) await db.events.put({ ...e, pending: false });
-      }
-    });
+        for (const id of reply.eventAcks) {
+          const e = await db.events.get([account, id]);
+          if (e) await db.events.put({ ...e, pending: false });
+        }
+      },
+    );
     // Conflicts may have happened before our cursor; process them explicitly.
-    await applyChanges(account, reply.conflicts, cursor);
-    await applyChanges(account, reply.changes, reply.cursor);
+    await applyChanges(account, reply.conflicts, cursor, epoch);
+    await applyChanges(account, reply.changes, reply.cursor, epoch);
     more =
       reply.more ||
       queuedWords.length > pendingWords.length ||
@@ -200,4 +223,45 @@ export async function generateEntry(text: string) {
       "生成不可用：请检查登录、免费额度与模型配置。输入已保留，可手动填写。",
     );
   return draftSchema.parse(data);
+}
+
+export function resetAccount(
+  account: string,
+  epoch: number,
+  requestId: string,
+) {
+  const running = active.get(account);
+  const operation = (async () => {
+    if (running) await running.catch(() => {});
+    await performReset(account, epoch, requestId);
+  })().finally(() => {
+    if (active.get(account) === operation) active.delete(account);
+  });
+  active.set(account, operation);
+  return operation;
+}
+async function performReset(account: string, epoch: number, requestId: string) {
+  if (!cloud || account === "guest") throw new Error("请先登录。");
+
+  const before = await cloud.auth.getSession();
+  if (before.data.session?.user.id !== account)
+    throw new Error("登录账号已改变，请重新确认。");
+  const response = await fetch(`${url}/rest/v1/rpc/reset_learning`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: key,
+      Authorization: `Bearer ${before.data.session.access_token}`,
+    },
+    signal: AbortSignal.timeout(20000),
+    body: JSON.stringify({ p_epoch: epoch, p_request: requestId }),
+  });
+  if (!response.ok)
+    throw new Error(
+      "初始化未完成，请检查网络；若账号已在其他设备初始化，请刷新。 ",
+    );
+  const result = z
+    .object({ epoch: z.number().int().nonnegative() })
+    .parse(await response.json());
+  await adoptEpoch(account, epoch, result.epoch);
 }

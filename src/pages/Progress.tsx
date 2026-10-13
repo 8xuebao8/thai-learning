@@ -1,31 +1,17 @@
 import { LongTermGoals } from "../components/LongTermGoals";
-import { useState, useRef } from "react";
-import {
-  Download,
-  Upload,
-  Cloud,
-  BookOpen,
-  Flame,
-  CheckCheck,
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import { Cloud, BookOpen, Flame, CheckCheck } from "lucide-react";
 import { useLearning } from "../app/context";
 import { deriveProgress, dateKey, streak } from "../domain/learning";
-import {
-  exportBackup,
-  importBackup,
-  copyGuestTo,
-  clearAccount,
-  db,
-} from "../data/store";
+import { ResetAccount } from "../components/ResetAccount";
 import { statusName } from "./Vocabulary";
 import { exercises, personalExercises } from "../content/course";
-import { cloud, syncAccount } from "../services/cloud";
+import { cloud } from "../services/cloud";
 export function Progress({ onLogin }: { onLogin: () => void }) {
   const { allWords, events, settings, putSettings, account, notify } =
     useLearning();
   const [goal, setGoal] = useState(String(settings.goal));
-  const [busy, setBusy] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => setGoal(String(settings.goal)), [settings.goal]);
   const stats = allWords.map((w) => deriveProgress(events, w.id));
   const learned = stats.filter((p) => p.status !== "new").length;
   const mastered = stats.filter((p) => p.status === "mastered").length;
@@ -43,47 +29,6 @@ export function Progress({ onLogin }: { onLogin: () => void }) {
     (day) => events.filter((e) => dateKey(e.at) === dateKey(day)).length,
   );
   const max = Math.max(5, ...counts);
-  async function download() {
-    try {
-      const b = await exportBackup(account);
-      const url = URL.createObjectURL(
-        new Blob([JSON.stringify(b, null, 2)], { type: "application/json" }),
-      );
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `thai-learning-${dateKey(Date.now())}.json`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } catch {
-      notify("导出失败，请重试。");
-    }
-  }
-  async function upload(file: File) {
-    if (file.size > 20 * 1024 * 1024) {
-      notify("文件过大，请使用 20 MB 以下的备份。");
-      return;
-    }
-    setBusy(true);
-    try {
-      await importBackup(account, JSON.parse(await file.text()));
-      notify("备份已合并，已有学习记录按 ID 去重。");
-    } catch {
-      notify("无法导入：备份格式不正确。原有数据未被修改。");
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function sync() {
-    setBusy(true);
-    try {
-      await syncAccount(account);
-      notify("同步完成，冲突编辑会保留为词库中的副本。");
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "同步失败，数据仍保存在本机。");
-    } finally {
-      setBusy(false);
-    }
-  }
   async function saveGoal() {
     const n = Number(goal);
     if (!Number.isInteger(n) || n < 1 || n > 200) {
@@ -96,28 +41,6 @@ export function Progress({ onLogin }: { onLogin: () => void }) {
     } catch {
       notify("目标保存失败。");
     }
-  }
-  async function clear() {
-    if (
-      !confirm(
-        "清除当前账号在此浏览器的记录？建议先导出备份。云端数据不会被删除，重新同步后可下载。",
-      )
-    )
-      return;
-    const pending =
-      (await db.events.where("account").equals(account).toArray()).some(
-        (e) => e.pending,
-      ) ||
-      (await db.words.where("account").equals(account).toArray()).some(
-        (w) => w.dirty,
-      );
-    if (
-      pending &&
-      !confirm("存在尚未同步的数据。继续会丢失这些本地修改，确定已备份吗？")
-    )
-      return;
-    await clearAccount(account);
-    notify("本机数据已清除。");
   }
   return (
     <>
@@ -277,83 +200,29 @@ export function Progress({ onLogin }: { onLogin: () => void }) {
         <div>
           <h2>
             <Cloud size={21} />
-            数据与同步
+            账号与数据
           </h2>
           <p className="muted">
-            {!cloud
-              ? "目前使用本地模式。配置 Supabase 后可登录同步。"
-              : account === "guest"
-                ? "登录后，手机和电脑可以共用私人词库与进度。"
-                : "已登录。每次练习先保存在本机，再联网同步。"}
+            {account === "guest"
+              ? "当前是临时体验：刷新就清空。登录后直接加载云端记录，不会合并体验数据。"
+              : "词库、学习记录与目标自动保存到云端。请留意页面顶部的保存状态；断网时尚未保存成功。"}
           </p>
         </div>
-        <div className="button-row">
-          {cloud &&
-            (account === "guest" ? (
-              <button className="primary" onClick={onLogin}>
-                使用邮箱登录
-              </button>
-            ) : (
-              <>
-                <button
-                  className="primary"
-                  disabled={busy}
-                  onClick={() => void sync()}
-                >
-                  {busy ? "同步中…" : "立即同步"}
-                </button>
-                <button
-                  className="secondary"
-                  onClick={() =>
-                    void copyGuestTo(account)
-                      .then(() => notify("本机访客记录已合并到账号。"))
-                      .catch(() => notify("合并失败。"))
-                  }
-                >
-                  合并本机访客记录
-                </button>
-                <button
-                  className="secondary"
-                  onClick={() => void cloud?.auth.signOut()}
-                >
-                  退出登录
-                </button>
-              </>
-            ))}
-          <button
-            className="secondary"
-            disabled={busy}
-            onClick={() => void download()}
-          >
-            <Download size={16} />
-            导出备份
+        {account === "guest" ? (
+          <button className="primary" onClick={onLogin}>
+            使用邮箱登录
           </button>
-          <button
-            className="secondary"
-            disabled={busy}
-            onClick={() => input.current?.click()}
-          >
-            <Upload size={16} />
-            导入备份
-          </button>
-          <input
-            ref={input}
-            hidden
-            type="file"
-            accept="application/json,.json"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void upload(f);
-              e.target.value = "";
-            }}
-          />
-        </div>
-        <button
-          className="text-button danger"
-          onClick={() => void clear().catch(() => notify("清除失败，请重试。"))}
-        >
-          清除本机数据
-        </button>
+        ) : (
+          <div className="button-row">
+            <button
+              className="secondary"
+              onClick={() => void cloud?.auth.signOut()}
+            >
+              退出登录
+            </button>
+            <ResetAccount />
+          </div>
+        )}
       </section>
     </>
   );

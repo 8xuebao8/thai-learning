@@ -39,8 +39,35 @@ export type Data = {
   words: Word[];
   events: LearningEvent[];
   settings: Settings;
+  epoch?: number;
 };
+let guest: Data = { words: [], events: [], settings: defaultSettings };
+const guestMeta = new Map<string, unknown>();
+const guestListeners = new Set<() => void>();
+export function watchGuest(listener: () => void) {
+  guestListeners.add(listener);
+  return () => {
+    guestListeners.delete(listener);
+  };
+}
+function guestChanged() {
+  guestListeners.forEach((fn) => fn());
+}
+export async function getWord(account: string, id: string) {
+  return account === "guest"
+    ? guest.words.find((w) => w.id === id)
+    : db.words.get([account, id]);
+}
+export async function checkEpoch(account: string, expected?: number) {
+  if (
+    account !== "guest" &&
+    expected !== undefined &&
+    (await getMeta(`${account}:epoch`, -1)) !== expected
+  )
+    throw new Error("账号数据已初始化，请在新页面继续。 ");
+}
 export async function loadData(account: string): Promise<Data> {
+  if (account === "guest") return structuredClone(guest);
   const [words, events, config] = await Promise.all([
     db.words.where("account").equals(account).toArray(),
     db.events.where("account").equals(account).toArray(),
@@ -50,34 +77,58 @@ export async function loadData(account: string): Promise<Data> {
     words: words.map(({ account: _, ...w }) => w),
     events: events.map(({ account: _, pending: __, ...e }) => e),
     settings: config?.settings ?? defaultSettings,
+    epoch: await getMeta<number>(`${account}:epoch`, -1),
   };
 }
 export async function saveEvent(
   account: string,
   event: LearningEvent,
   continuation?: { key: string; value: unknown },
+  epoch?: number,
 ): Promise<void> {
   const e = eventSchema.parse(event);
+  if (account === "guest") {
+    if (!guest.events.some((x) => x.id === e.id)) guest.events.push(e);
+    if (continuation) guestMeta.set(continuation.key, continuation.value);
+    guestChanged();
+    return;
+  }
   await db.transaction("rw", db.events, db.meta, async () => {
+    await checkEpoch(account, epoch);
     if (!(await db.events.get([account, e.id])))
       await db.events.add({ ...e, account, pending: true });
     if (continuation) await db.meta.put(continuation);
   });
 }
-export async function saveWord(account: string, word: Word): Promise<void> {
-  await db.words.put({
-    ...wordSchema.parse(word),
-    account,
-    dirty: true,
-    updatedAt: Date.now(),
+export async function saveWord(
+  account: string,
+  word: Word,
+  epoch?: number,
+): Promise<void> {
+  const w = { ...wordSchema.parse(word), dirty: true, updatedAt: Date.now() };
+  if (account === "guest") {
+    guest.words = [...guest.words.filter((x) => x.id !== w.id), w];
+    guestChanged();
+    return;
+  }
+  await db.transaction("rw", db.words, db.meta, async () => {
+    await checkEpoch(account, epoch);
+    await db.words.put({ ...w, account });
   });
 }
 export async function saveSettings(
   account: string,
   settings: Settings,
+  epoch?: number,
 ): Promise<void> {
   const s = settingsSchema.parse(settings);
-  await db.transaction("rw", db.configs, async () => {
+  if (account === "guest") {
+    guest.settings = s;
+    guestChanged();
+    return;
+  }
+  await db.transaction("rw", db.configs, db.meta, async () => {
+    await checkEpoch(account, epoch);
     const c = await db.configs.get(account);
     await db.configs.put({
       account,
@@ -92,6 +143,12 @@ export async function importBackup(
   input: unknown,
 ): Promise<void> {
   const b = backupSchema.parse(input);
+  if (account === "guest") {
+    for (const w of b.words) await saveWord(account, w);
+    for (const e of b.events) await saveEvent(account, e);
+    await saveSettings(account, b.settings);
+    return;
+  }
   await db.transaction("rw", db.words, db.events, db.configs, async () => {
     for (const word of b.words) {
       const current = await db.words.get([account, word.id]);
@@ -134,12 +191,22 @@ export async function exportBackup(account: string): Promise<Backup> {
   return { version: 1, exportedAt: new Date().toISOString(), ...data };
 }
 export async function getMeta<T>(key: string, fallback: T): Promise<T> {
+  if (key.startsWith("guest:")) return (guestMeta.get(key) as T) ?? fallback;
   return ((await db.meta.get(key))?.value as T) ?? fallback;
 }
 export async function setMeta(key: string, value: unknown) {
+  if (key.startsWith("guest:")) {
+    guestMeta.set(key, value);
+    return;
+  }
   await db.meta.put({ key, value });
 }
 export async function clearAccount(account: string) {
+  if (account === "guest") {
+    guest = { words: [], events: [], settings: defaultSettings };
+    guestMeta.clear();
+    guestChanged();
+  }
   await db.transaction(
     "rw",
     db.words,
@@ -154,11 +221,6 @@ export async function clearAccount(account: string) {
     },
   );
 }
-export async function copyGuestTo(account: string) {
-  const backup = await exportBackup("guest");
-  await importBackup(account, backup);
-}
-
 // Only the same pending revision may accept an asynchronous model response.
 export async function completePendingWord(
   account: string,
@@ -167,6 +229,25 @@ export async function completePendingWord(
   revision: number,
   draft: Pick<Word, "thai" | "roman" | "chinese" | "pos" | "note" | "example">,
 ): Promise<boolean> {
+  if (account === "guest") {
+    const current = guest.words.find((w) => w.id === id);
+    if (
+      !current ||
+      current.deleted ||
+      current.enrichment !== "pending" ||
+      current.thai !== thai ||
+      current.updatedAt !== revision
+    )
+      return false;
+    await saveWord(account, {
+      ...current,
+      ...draft,
+      id,
+      enrichment: "ready",
+      review: "draft",
+    });
+    return true;
+  }
   return db.transaction("rw", db.words, async () => {
     const current = await db.words.get([account, id]);
     if (
@@ -196,4 +277,26 @@ export async function completePendingWord(
     });
     return true;
   });
+}
+
+// Compare before clearing: a late response must never clear a newer reset generation.
+export async function adoptEpoch(
+  account: string,
+  expected: number,
+  next: number,
+) {
+  return db.transaction(
+    "rw",
+    db.words,
+    db.events,
+    db.configs,
+    db.meta,
+    async () => {
+      const current = await getMeta<number>(`${account}:epoch`, -1);
+      if (current !== expected || next < current) return false;
+      await clearAccount(account);
+      await setMeta(`${account}:epoch`, next);
+      return true;
+    },
+  );
 }

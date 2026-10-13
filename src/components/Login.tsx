@@ -17,7 +17,7 @@ export function Login({ onClose }: { onClose: () => void }) {
     try {
       await signInWithEmail(email, password);
       setPassword("");
-      notify("登录成功。访客记录仍保留在本机，可在学习进度页合并。");
+      notify("登录成功，正在加载云端记录。体验数据不会合并。");
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "登录失败，请重试。");
@@ -81,7 +81,7 @@ export function Login({ onClose }: { onClose: () => void }) {
         </button>
         {!cloud && (
           <p className="hint">
-            尚未配置 Supabase。你可以继续本机学习，配置后再登录。
+            尚未配置 Supabase。你可以临时体验，刷新后体验记录会清空。
           </p>
         )}
         <p className="form-note">

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-test("known words skip before revealing, survive reload, and can be restored", async ({
+test("known words skip before revealing, remain during navigation, and can be restored", async ({
   page,
 }) => {
   await page.goto("/#/vocabulary");
@@ -9,7 +9,8 @@ test("known words skip before revealing, survive reload, and can be restored", a
   ).toBeEnabled();
   await page.getByRole("button", { name: "我认识", exact: true }).click();
   await page.getByRole("button", { name: "完成并返回" }).click();
-  await page.reload();
+  await page.getByRole("link", { name: "学习首页", exact: true }).click();
+  await page.getByRole("link", { name: "词汇学习", exact: true }).click();
   await page.getByLabel("词汇状态").selectOption("known");
   await expect(page.locator(".word-card")).toHaveCount(1);
   await page.getByRole("button", { name: "恢复学习", exact: true }).click();
@@ -34,7 +35,8 @@ test("raw Thai survives failed enrichment without entering learning quizzes", as
   await page.getByRole("button", { name: "自动收录", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("原词已收录");
   await page.getByRole("button", { name: "关闭窗口" }).click();
-  await page.reload();
+  await page.getByRole("link", { name: "学习首页", exact: true }).click();
+  await page.getByRole("link", { name: "词汇学习", exact: true }).click();
   await page.getByLabel("词汇状态").selectOption("pending");
   await expect(page.locator(".word-card")).toHaveCount(1);
   await expect(page.getByText("已收录 · 点击补全")).toBeVisible();
@@ -91,7 +93,8 @@ test("long term plan stores named grammar mastery and separate level self assess
   await page.getByLabel("条件句", { exact: true }).check();
   await page.getByRole("button", { name: "保存总目标" }).click();
   await expect(page.getByText("总目标已保存，可随时调整。")).toBeVisible();
-  await page.reload();
+  await page.getByRole("link", { name: "学习首页", exact: true }).click();
+  await page.getByRole("link", { name: "学习进度", exact: true }).click();
   await expect(page.getByLabel("目标等级")).toHaveValue("Distinguished");
   await expect(page.getByText("词汇进度 2000 / 12000")).toBeVisible();
   await expect(page.getByText("语法进度 1 / 300")).toBeVisible();

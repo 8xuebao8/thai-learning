@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-test("Pages subpath caches lessons and saves learning after an offline reload", async ({
+test("Pages subpath caches lessons and discards guest learning after an offline reload", async ({
   page,
   context,
 }, testInfo) => {
@@ -39,7 +39,7 @@ test("Pages subpath caches lessons and saves learning after an offline reload", 
   await page.getByRole("button", { name: "结束本次学习" }).click();
   await page.getByRole("link", { name: "学习进度" }).click();
   await page.reload();
-  await expect(page.getByTestId("attempt-total")).toHaveText("1");
+  await expect(page.getByTestId("attempt-total")).toHaveText("0");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

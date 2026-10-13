@@ -760,6 +760,7 @@ details p {
   display: none;
 }
 .toast {
+  pointer-events: none;
   position: fixed;
   bottom: 25px;
   left: 50%;
@@ -778,6 +779,7 @@ details p {
   min-width: 240px;
 }
 .toast button {
+  pointer-events: auto;
   color: white;
   padding: 0;
   display: flex;

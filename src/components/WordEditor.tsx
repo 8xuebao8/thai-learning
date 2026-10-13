@@ -3,7 +3,7 @@ import { Sparkles, Trash2 } from "lucide-react";
 import { Modal } from "./common";
 import { useLearning } from "../app/context";
 import { wordSchema, type Word } from "../domain/model";
-import { db, completePendingWord } from "../data/store";
+import { getWord, completePendingWord } from "../data/store";
 import { generateEntry, cloud } from "../services/cloud";
 export function WordEditor({
   word,
@@ -86,7 +86,7 @@ export function WordEditor({
           explanation,
         };
       }
-      const current = await db.words.get([account, pendingId.current]);
+      const current = await getWord(account, pendingId.current);
       const w = wordSchema.parse({
         ...form,
         sentence,
@@ -147,11 +147,11 @@ export function WordEditor({
         updatedAt: Date.now(),
         dirty: true,
       });
-      const previous = await db.words.get([account, raw.id]);
+      const previous = await getWord(account, raw.id);
       if (previous && previous.enrichment !== "pending")
         throw new Error("词条已经补全");
       await putWord({ ...raw, version: previous?.version ?? raw.version });
-      const revision = (await db.words.get([account, raw.id]))!.updatedAt;
+      const revision = (await getWord(account, raw.id))!.updatedAt;
       try {
         const draft = await generateEntry(thai);
         if (draft.thai.trim().normalize("NFC") !== thai)
