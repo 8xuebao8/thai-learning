@@ -129,6 +129,14 @@ export function LibraryTransfer() {
       setBusy(false);
     }
   }
+  async function apply(p: Prepared) {
+    setPrepared(p);
+    const result = await confirmImport(account, p, setProgress);
+    setPending(null);
+    setReceipt(result);
+    setPrepared(null);
+    setInput("");
+  }
   async function copy() {
     await run(async () => {
       const { text } = await copyLibrary(account);
@@ -198,10 +206,7 @@ export function LibraryTransfer() {
         <button
           className="secondary"
           disabled={busy}
-          onClick={() => {
-            setPrepared(pending);
-            setProgress("这是已确认的任务，继续执行尚未完成的批次。");
-          }}
+          onClick={() => void run(() => apply(pending))}
         >
           继续未完成的导入
         </button>
@@ -425,25 +430,15 @@ export function LibraryTransfer() {
                 blocked ||
                 !prepared.rows.some((r) => r.status === "ready")
               }
-              onClick={() =>
-                void run(async () => {
-                  const result = await confirmImport(
-                    account,
-                    prepared,
-                    setProgress,
-                  );
-                  setPending(null);
-                  setReceipt(result);
-                  setPrepared(null);
-                  setInput("");
-                })
-              }
+              onClick={() => void run(() => apply(prepared))}
             >
               {busy
                 ? "正在提交…"
-                : account === "guest"
-                  ? "确认修改（临时体验）"
-                  : "确认并同步"}
+                : pending?.request === prepared.request
+                  ? "继续已确认的导入"
+                  : account === "guest"
+                    ? "确认修改（临时体验）"
+                    : "确认并同步"}
             </button>
           </div>
         </Modal>
