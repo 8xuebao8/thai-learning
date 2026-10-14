@@ -86,7 +86,7 @@ export function LibraryTransfer() {
       const { text } = await copyLibrary(account);
       try {
         await navigator.clipboard.writeText(text);
-        setMessage("已复制词库和提示词，可以粘贴给 AI。");
+        setMessage("已复制词库、学习进度和提示词，可以粘贴给 AI。");
       } catch {
         setFallback(text);
       }
@@ -110,7 +110,8 @@ export function LibraryTransfer() {
         <strong>用 AI 整理词库</strong>
         <p className="muted">
           复制给 AI
-          讨论，再粘贴修改包。预览确认前不会改动词库；复制内容包含你的词条与备注。
+          讨论，再粘贴修改包。预览确认前不会改动词库；复制内容包含词条、备注、学习目标、掌握情况和练习历史，供你发给
+          AI 讨论。
         </p>
       </div>
       <div className="button-row">

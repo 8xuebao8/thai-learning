@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { learningContext } from "./learning-context";
 import { courseWords } from "../content/course";
 import {
   db,
@@ -36,6 +37,8 @@ async function current(account: string) {
     const data = await loadData(account);
     return {
       epoch: data.epoch ?? 0,
+      events: data.events,
+      settings: data.settings,
       seq: await getMeta<number>(`${account}:cursor`, 0),
       words: [
         ...courseWords
@@ -115,9 +118,23 @@ async function remoteReceipt(
 export async function copyLibrary(account: string) {
   if (account !== "guest") await syncAccount(account);
   const data = await current(account);
-  const snapshot: Snapshot = { id: crypto.randomUUID(), ...data };
+  const snapshot: Snapshot = {
+    id: crypto.randomUUID(),
+    epoch: data.epoch,
+    words: data.words,
+  };
   await setMeta(`${account}:ai-snapshot:${snapshot.id}`, snapshot);
-  return { snapshot, text: exportPrompt(snapshot) };
+  return {
+    snapshot,
+    text:
+      exportPrompt(snapshot) +
+      "\n\n学习上下文（只读）：\n" +
+      JSON.stringify(
+        learningContext(data.words, data.events, data.settings),
+        null,
+        2,
+      ),
+  };
 }
 export async function prepareImport(
   account: string,
