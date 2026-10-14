@@ -21,9 +21,13 @@ test("AI import previews additions/deletions and cancel never changes the librar
   const copied = await page.evaluate(() => (window as any).copied as string);
   const snapshotId = JSON.parse(
     copied.split(
-      "词库快照（含已删除词供restore；不含登录信息和学习历史）：\n",
-    )[1],
+      "词库快照（含已删除词供restore；不含登录信息）：\n",
+    )[1].split("\n\n学习上下文（只读）：\n")[0],
   ).snapshotId;
+  const learning = JSON.parse(copied.split("学习上下文（只读）：\n")[1]);
+  expect(learning.readOnly).toBe(true);
+  expect(learning.words.length).toBeGreaterThan(0);
+  expect(learning.settings.goal).toBe(10);
   const pack = {
     format: "thai-library-changes",
     version: 1,
@@ -39,8 +43,8 @@ test("AI import previews additions/deletions and cancel never changes the librar
   // Obtain real course ID from the copied data rather than assuming its format.
   pack.operations[1].id = JSON.parse(
     copied.split(
-      "词库快照（含已删除词供restore；不含登录信息和学习历史）：\n",
-    )[1],
+      "词库快照（含已删除词供restore；不含登录信息）：\n",
+    )[1].split("\n\n学习上下文（只读）：\n")[0],
   ).words[0].id;
   await page.getByRole("button", { name: "导入 AI 修改", exact: true }).click();
   await page.getByLabel("AI 修改包").fill(JSON.stringify(pack));
