@@ -20,9 +20,9 @@ test("AI import previews additions/deletions and cancel never changes the librar
   ).toBeVisible();
   const copied = await page.evaluate(() => (window as any).copied as string);
   const snapshotId = JSON.parse(
-    copied.split(
-      "词库快照（含已删除词供restore；不含登录信息）：\n",
-    )[1].split("\n\n学习上下文（只读）：\n")[0],
+    copied
+      .split("词库快照（含已删除词供restore；不含登录信息）：\n")[1]
+      .split("\n\n学习上下文（只读）：\n")[0],
   ).snapshotId;
   const learning = JSON.parse(copied.split("学习上下文（只读）：\n")[1]);
   expect(learning.readOnly).toBe(true);
@@ -42,17 +42,31 @@ test("AI import previews additions/deletions and cancel never changes the librar
   };
   // Obtain real course ID from the copied data rather than assuming its format.
   pack.operations[1].id = JSON.parse(
-    copied.split(
-      "词库快照（含已删除词供restore；不含登录信息）：\n",
-    )[1].split("\n\n学习上下文（只读）：\n")[0],
+    copied
+      .split("词库快照（含已删除词供restore；不含登录信息）：\n")[1]
+      .split("\n\n学习上下文（只读）：\n")[0],
   ).words[0].id;
   await page.getByRole("button", { name: "导入 AI 修改", exact: true }).click();
+  const incomplete = structuredClone(pack);
+  incomplete.operations[0].data!.roman = "";
+  await page.getByLabel("AI 修改包").fill(JSON.stringify(incomplete));
+  await page.getByRole("button", { name: "预览修改", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "确认词库修改" }),
+  ).toContainText("不能进入学习测验");
+  await page
+    .getByRole("dialog", { name: "确认词库修改" })
+    .getByRole("button", { name: "取消", exact: true })
+    .click();
   await page.getByLabel("AI 修改包").fill(JSON.stringify(pack));
   await page.getByRole("button", { name: "预览修改", exact: true }).click();
   const modal = page.getByRole("dialog", { name: "确认词库修改" });
   await expect(modal).toContainText("新增 1");
   await expect(modal).toContainText("删除 1");
-  await page.screenshot({path:`artifacts/ai-import-${test.info().project.name}.png`,fullPage:true});
+  await page.screenshot({
+    path: `artifacts/ai-import-${test.info().project.name}.png`,
+    fullPage: true,
+  });
   await modal.getByRole("button", { name: "取消", exact: true }).click();
   await expect(
     page.locator(".word-card").filter({ hasText: "ทดสอบนำเข้า" }),

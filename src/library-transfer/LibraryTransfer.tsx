@@ -224,6 +224,26 @@ export function LibraryTransfer() {
             恢复，学习历史保留。主题删除会迁移内容，不能用词条 restore
             恢复主题。
           </p>
+          {prepared.rows.some(
+            (r) =>
+              r.status === "ready" &&
+              r.after?.enrichment === "pending" &&
+              !r.after.deleted,
+          ) && (
+            <p role="alert" className="import-error">
+              本批有{" "}
+              {
+                prepared.rows.filter(
+                  (r) =>
+                    r.status === "ready" &&
+                    r.after?.enrichment === "pending" &&
+                    !r.after.deleted,
+                ).length
+              }{" "}
+              个词缺少读音或中文，导入后只能待补全，不能进入学习测验。若要直接学习，请取消并让
+              AI 补齐内容。
+            </p>
+          )}
           {blocked && (
             <p role="alert" className="import-error">
               有错误或冲突，本批次不会执行。请取消并修正修改包，或重新复制词库。
@@ -244,6 +264,15 @@ export function LibraryTransfer() {
                   {r.index + 1}. {names[r.action]} · {r.thai}
                 </h3>
                 <p>{r.after?.chinese ?? r.before?.chinese}</p>
+                {r.after?.enrichment === "pending" && !r.after.deleted && (
+                  <strong className="import-error">
+                    待补全 · 缺少{!r.after.roman.trim() ? "读音" : ""}
+                    {!r.after.roman.trim() && !r.after.chinese.trim()
+                      ? "和"
+                      : ""}
+                    {!r.after.chinese.trim() ? "中文" : ""}，暂不能学习
+                  </strong>
+                )}
                 <p>{r.reason || "待确认"}</p>
                 {r.themeAfter && (
                   <p>

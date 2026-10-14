@@ -126,3 +126,12 @@ describe("AI changes", () => {
     ).toBe(true);
   });
 });
+it("guides direct complete generation in small paste-ready batches", () => {
+  const out = exportPrompt(snapshot);
+  expect(out).toContain("每批默认20个");
+  expect(out).toContain("输出格式");
+  expect(out).toContain("不能只给下载链接");
+  expect(out).toContain("待核实清单");
+  expect(out).not.toContain("不确定读音或含义留空");
+  expect(out).toContain("不能把字段齐全说成内容完整");
+});
