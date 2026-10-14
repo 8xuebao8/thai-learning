@@ -1,3 +1,4 @@
+import { resolveTheme, topicName } from "../domain/themes";
 import { exercises, personalExercises } from "../content/course";
 import { deriveProgress, streak } from "../domain/learning";
 import type { LearningEvent, Settings, Word } from "../domain/model";
@@ -51,11 +52,15 @@ export function learningContext(
     words: activeWords.map((w) => ({
       id: w.id,
       thai: w.thai,
+      theme: resolveTheme(w.theme, settings.themes),
+      themeName: topicName(w.theme, settings.themes),
       progress: deriveProgress(history, w.id, now),
     })),
     sentences: [...exercises, ...personalExercises(words)].map((e) => ({
       id: e.id,
       thai: e.thai,
+      theme: resolveTheme(e.theme, settings.themes),
+      themeName: topicName(e.theme, settings.themes),
       chinese: e.prompt,
       progress: deriveProgress(history, e.id, now),
     })),

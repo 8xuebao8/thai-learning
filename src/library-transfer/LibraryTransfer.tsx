@@ -1,15 +1,28 @@
+import { ThemeManager } from "./ThemeManager";
+import { defaultCatalog, topicName } from "../domain/themes";
+import { catalogAfter } from "./contract";
 import { useRef, useState } from "react";
 import { useLearning } from "../app/context";
 import { Modal } from "../components/common";
 import type { Word } from "../domain/model";
 import {
   copyLibrary,
+  prepareOperations,
   prepareImport,
   confirmImport,
   type Prepared,
   type Receipt,
 } from "./service";
-const names = { add: "新增", update: "修改", delete: "删除", restore: "恢复" };
+const names = {
+  theme_add: "新增主题",
+  theme_rename: "重命名主题",
+  theme_delete: "删除主题",
+  move: "移动词语",
+  add: "新增",
+  update: "修改",
+  delete: "删除",
+  restore: "恢复",
+};
 const labels: Record<string, string> = {
   thai: "泰语",
   chinese: "中文",
@@ -133,6 +146,14 @@ export function LibraryTransfer() {
           导入 AI 修改
         </button>
       </div>
+      <ThemeManager
+        busy={busy}
+        onPreview={(ops) =>
+          void run(async () =>
+            setPrepared(await prepareOperations(account, ops)),
+          )
+        }
+      />
       {account === "guest" && (
         <p className="muted">
           当前为临时体验：导入内容和快照刷新后消失，登录不会合并访客数据。
@@ -200,7 +221,8 @@ export function LibraryTransfer() {
           </p>
           <p>
             请核对以下全部操作。取消不会保存；删除可用 restore
-            恢复，学习历史保留。
+            恢复，学习历史保留。主题删除会迁移内容，不能用词条 restore
+            恢复主题。
           </p>
           {blocked && (
             <p role="alert" className="import-error">
@@ -223,14 +245,60 @@ export function LibraryTransfer() {
                 </h3>
                 <p>{r.after?.chinese ?? r.before?.chinese}</p>
                 <p>{r.reason || "待确认"}</p>
+                {r.themeAfter && (
+                  <p>
+                    {r.themeBefore?.name ?? "新主题"} →{" "}
+                    {r.themeAfter.redirectTo
+                      ? topicName(
+                          r.themeAfter.redirectTo,
+                          catalogAfter(
+                            prepared.rows,
+                            prepared.snapshot.themes ?? defaultCatalog,
+                          ),
+                        )
+                      : r.themeAfter.name}
+                  </p>
+                )}
+                {r.moved && (
+                  <details open>
+                    <summary>
+                      迁移 {r.moved.filter((w) => w.kind === "word").length}{" "}
+                      个词条、
+                      {r.moved.filter((w) => w.kind === "sentence").length}{" "}
+                      个拼句
+                    </summary>
+                    <ul>
+                      {r.moved.map((w) => (
+                        <li key={`${w.kind}:${w.id}`}>
+                          {w.kind === "sentence" ? "拼句" : "词条"} · {w.thai} →{" "}
+                          {w.destination}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {r.after && r.before && r.after.theme !== r.before.theme && (
+                  <p>
+                    主题：{topicName(r.before.theme, prepared.snapshot.themes)}{" "}
+                    →{" "}
+                    {topicName(
+                      r.after.theme,
+                      catalogAfter(prepared.rows, prepared.snapshot.themes),
+                    )}
+                  </p>
+                )}
                 {(r.after || r.before) && (
-                  <details open={r.action === "update"}>
+                  <details open={r.action === "update" || r.action === "move"}>
                     <summary>
                       {r.action === "update" ? "查看前后对比" : "查看全部字段"}
                     </summary>
                     <Details
                       word={(r.after ?? r.before)!}
-                      before={r.action === "update" ? r.before : undefined}
+                      before={
+                        r.action === "update" || r.action === "move"
+                          ? r.before
+                          : undefined
+                      }
                     />
                   </details>
                 )}
@@ -296,7 +364,7 @@ export function LibraryTransfer() {
                 </p>
                 {r.status === "ready" && (
                   <small>
-                    ID：{r.after?.id}
+                    ID：{r.after?.id ?? r.themeAfter?.id}
                     {r.after?.sentence && ` · 拼句：sentence:${r.after.id}`}
                   </small>
                 )}

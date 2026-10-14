@@ -1,13 +1,14 @@
 import { z } from "zod";
+import { themeIdSchema, catalogSchema } from "./themes";
 export const themes = ["work", "campus", "life", "personal"] as const;
-export type Theme = (typeof themes)[number];
+export type Theme = string;
 export const wordSchema = z
   .object({
     id: z.string().min(1).max(100),
     thai: z.string().trim().min(1).max(500),
     roman: z.string().trim().max(1000),
     chinese: z.string().trim().max(1000),
-    theme: z.enum(themes),
+    theme: themeIdSchema,
     pos: z.string().max(100),
     note: z.string().max(2000),
     example: z.object({
@@ -86,6 +87,7 @@ export const longTermSchema = z.object({
 });
 export type LongTermGoal = z.infer<typeof longTermSchema>;
 export const settingsSchema = z.object({
+  themes: catalogSchema.optional(),
   goal: z.number().int().min(1).max(200),
   longTerm: longTermSchema.optional(),
   display: z.enum(["both", "roman", "thai"]),

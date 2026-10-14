@@ -402,7 +402,7 @@ export function personalExercises(words: Word[]): Exercise[] {
       const tokens = s.tokens.map((t) => t.thai);
       return {
         id: `sentence:${w.id}`,
-        theme: "personal",
+        theme: w.theme,
         prompt: w.chinese,
         thai: w.thai,
         roman: w.roman,

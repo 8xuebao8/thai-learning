@@ -1,7 +1,8 @@
+import { activeThemes, resolveTheme } from "../domain/themes";
 import { useEffect, useState } from "react";
 import { ArrowRight, RotateCcw, Undo2, Lightbulb, Eye } from "lucide-react";
 import { useLearning } from "../app/context";
-import { exercises, units, personalExercises } from "../content/course";
+import { exercises, personalExercises } from "../content/course";
 import { checkAnswer, shuffle } from "../domain/learning";
 import { getMeta, setMeta } from "../data/store";
 import { AudioButton, Script, Empty } from "../components/common";
@@ -18,9 +19,14 @@ export function Sentences() {
   const [hint, setHint] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showAssist, setShowAssist] = useState(false);
-  const topics = [...units, { id: "personal", title: "我的句子" }];
+  const topics = activeThemes(settings.themes).map((t) => ({
+    id: t.id,
+    title: t.id === "personal" && !settings.themes ? "我的句子" : t.name,
+  }));
   const list = [...exercises, ...personalExercises(allWords)].filter(
-    (e) => e.theme === theme,
+    (e) =>
+      resolveTheme(e.theme, settings.themes) ===
+      resolveTheme(theme, settings.themes),
   );
   const exercise = list[index % list.length] ?? exercises[0];
   const [bank, setBank] = useState(() => shuffle(exercise.tiles));
@@ -91,7 +97,9 @@ export function Sentences() {
         <div className="tabs">
           {topics.map((u) => (
             <button
-              className={theme === u.id ? "active" : ""}
+              className={
+                resolveTheme(theme, settings.themes) === u.id ? "active" : ""
+              }
               key={u.id}
               onClick={() => {
                 setTheme(u.id);
@@ -141,7 +149,7 @@ export function Sentences() {
             )}
             {selected.map((id) => {
               const tile = exercise.tiles.find((t) => t.id === id);
-            if (!tile) return null;
+              if (!tile) return null;
               return (
                 <button
                   className="tile selected"

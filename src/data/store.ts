@@ -301,9 +301,11 @@ export async function adoptEpoch(
   );
 }
 
-export function applyGuestImport(words: Word[]) {
+export function applyGuestImport(words: Word[], settings?: Settings) {
   const parsed = words.map(w => wordSchema.parse(w));
+  const nextSettings = settings ? settingsSchema.parse(settings) : guest.settings;
   const ids = new Set(parsed.map(w => w.id));
   guest.words = [...guest.words.filter(w => !ids.has(w.id)), ...parsed];
+  guest.settings = nextSettings;
   guestChanged();
 }

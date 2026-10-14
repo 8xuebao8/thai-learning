@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { defaultCatalog } from "../domain/themes";
 import { learningContext } from "./learning-context";
 import { courseWords } from "../content/course";
 import {
@@ -11,6 +12,7 @@ import {
 import { cloud, syncAccount, withAccountLock } from "../services/cloud";
 import {
   parsePackage,
+  catalogAfter,
   previewPackage,
   exportPrompt,
   stable,
@@ -39,6 +41,10 @@ async function current(account: string) {
       epoch: data.epoch ?? 0,
       events: data.events,
       settings: data.settings,
+      configVersion:
+        account === "guest"
+          ? 0
+          : ((await db.configs.get(account))?.version ?? 0),
       seq: await getMeta<number>(`${account}:cursor`, 0),
       words: [
         ...courseWords
@@ -101,14 +107,19 @@ async function remoteReceipt(
     p.snapshot,
     p.snapshot.words,
     p.request,
+    p.snapshot.themes ?? defaultCatalog,
   );
   // Return only actions whose IDs the server actually acknowledged.
   const acked = new Set(result.acks.map((a) => a.id));
   return {
-    applied: acked.size,
+    applied: rows.filter(
+      (r) =>
+        r.status === "ready" &&
+        acked.has(r.themeAfter ? "settings" : (r.after?.id ?? "")),
+    ).length,
     cloud: true,
     rows: rows.map((r) =>
-      acked.has(r.after?.id ?? "")
+      acked.has(r.themeAfter ? "settings" : (r.after?.id ?? ""))
         ? r
         : { ...r, status: "skip", reason: "未在成功回执中，未执行。" },
     ),
@@ -122,6 +133,7 @@ export async function copyLibrary(account: string) {
     id: crypto.randomUUID(),
     epoch: data.epoch,
     words: data.words,
+    themes: data.settings.themes ?? defaultCatalog,
   };
   await setMeta(`${account}:ai-snapshot:${snapshot.id}`, snapshot);
   return {
@@ -157,7 +169,13 @@ export async function prepareImport(
     `${account}:ai-receipt:${s.epoch}:${request}`,
     undefined,
   );
-  const rows = previewPackage(p, s, data.words, request);
+  const rows = previewPackage(
+    p,
+    s,
+    data.words,
+    request,
+    data.settings.themes ?? defaultCatalog,
+  );
   const prepared: Prepared = {
     snapshot: s,
     package: p,
@@ -195,21 +213,53 @@ export async function confirmImport(
       return remote;
     }
     if (
-      stable(previewPackage(p.package, s, data.words, p.request)) !==
-      stable(p.rows)
+      stable(
+        previewPackage(
+          p.package,
+          s,
+          data.words,
+          p.request,
+          data.settings.themes ?? defaultCatalog,
+        ),
+      ) !== stable(p.rows)
     )
       throw new Error("词库在预览后已变化，请重新预览。");
     const ready = p.rows.filter((r) => r.status === "ready");
-    const records = ready.map((r) => ({
-      id: r.after!.id,
-      kind: "word",
-      baseVersion: r.before?.version ?? 0,
-      deleted: !!r.after!.deleted,
-      opId: `ai:${p.request}:${r.index}`,
-      payload: { ...r.after!, updatedAt: Date.now(), dirty: false },
-    }));
+    const records = ready
+      .filter((r) => r.after)
+      .map((r) => ({
+        id: r.after!.id,
+        kind: "word",
+        baseVersion: r.before?.version ?? 0,
+        deleted: !!r.after!.deleted,
+        opId: `ai:${p.request}:${r.index}`,
+        payload: { ...r.after!, updatedAt: Date.now(), dirty: false },
+      }));
     // Payload timestamps must be stable for a retry after a lost response.
     records.forEach((r) => (r.payload.updatedAt = 0));
+    const nextSettings = ready.some((r) => r.themeAfter)
+      ? {
+          ...data.settings,
+          themes: catalogAfter(ready, data.settings.themes ?? defaultCatalog),
+        }
+      : undefined;
+    const cloudRecords: {
+      id: string;
+      kind: string;
+      baseVersion: number;
+      deleted: boolean;
+      opId: string;
+      payload: unknown;
+    }[] = [...records];
+    if (nextSettings)
+      cloudRecords.push({
+        id: "settings",
+        kind: "settings",
+        baseVersion: data.configVersion,
+        deleted: false,
+        opId: `ai:${p.request}:themes`,
+        payload: nextSettings,
+      });
     let receipt: Receipt = {
       applied: ready.length,
       rows: p.rows,
@@ -221,14 +271,15 @@ export async function confirmImport(
           ...r.payload,
           version: (r.baseVersion ?? 0) + 1,
         })),
+        nextSettings,
       );
-    else if (records.length) {
+    else if (cloudRecords.length) {
       if (!cloud) throw new Error("请先配置云服务。");
       const { data: auth } = await cloud.auth.getSession();
       if (auth.session?.user.id !== account)
         throw new Error("账号已变化，请重新登录。");
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/import_learning_changes`,
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/import_learning_changes_v2`,
         {
           method: "POST",
           headers: {
@@ -240,7 +291,7 @@ export async function confirmImport(
             p_epoch: s.epoch,
             p_seq: p.seq,
             p_request: p.request,
-            p_records: records,
+            p_records: cloudRecords,
           }),
           signal: AbortSignal.timeout(20000),
         },
@@ -262,8 +313,8 @@ export async function confirmImport(
           "云端数据已变化，未执行本批修改。请重新复制词库并预览。",
         );
       if (
-        result.acks?.length !== records.length ||
-        records.some((r) => !result.acks?.some((a) => a.id === r.id))
+        result.acks?.length !== cloudRecords.length ||
+        cloudRecords.some((r) => !result.acks?.some((a) => a.id === r.id))
       )
         throw new Error("云端回执不完整，请重试相同修改包核实结果。");
     }
@@ -278,4 +329,20 @@ export async function confirmImport(
     return receipt;
   };
   return account === "guest" ? execute() : withAccountLock(account, execute);
+}
+
+export async function prepareOperations(
+  account: string,
+  operations: ChangePackage["operations"],
+) {
+  const { snapshot } = await copyLibrary(account);
+  return prepareImport(
+    account,
+    JSON.stringify({
+      format: "thai-library-changes",
+      version: 1,
+      snapshotId: snapshot.id,
+      operations,
+    }),
+  );
 }

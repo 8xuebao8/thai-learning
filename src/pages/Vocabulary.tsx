@@ -2,7 +2,12 @@ import { LibraryTransfer } from "../library-transfer/LibraryTransfer";
 import { useState } from "react";
 import { Search, ArrowUpRight, Pencil, Plus, Layers } from "lucide-react";
 import { useLearning } from "../app/context";
-import { units, themeName } from "../content/course";
+import {
+  activeThemes,
+  defaultCatalog,
+  resolveTheme,
+  topicName,
+} from "../domain/themes";
 import { deriveProgress } from "../domain/learning";
 import { AudioButton, Empty } from "../components/common";
 import type { Word } from "../domain/model";
@@ -22,16 +27,15 @@ export function Vocabulary({
   quiz: (w: Word[]) => void;
   onEdit: (w?: Word) => void;
 }) {
-  const { allWords, events, record, notify } = useLearning();
+  const { allWords, events, record, notify, settings } = useLearning();
+  const catalog = settings.themes ?? defaultCatalog;
   const [query, setQuery] = useState("");
   const [theme, setTheme] = useState("all");
   const [filter, setFilter] = useState("all");
   const words = allWords.filter(
     (w) =>
       (theme === "all" ||
-        (theme === "personal"
-          ? !w.id.startsWith("course:")
-          : w.theme === theme)) &&
+        resolveTheme(w.theme, catalog) === resolveTheme(theme, catalog)) &&
       `${w.thai} ${w.roman} ${w.chinese}`
         .toLowerCase()
         .includes(query.toLowerCase()) &&
@@ -82,12 +86,15 @@ export function Vocabulary({
       <div className="tabs">
         {[
           { id: "all", title: "全部词汇" },
-          ...units,
-          { id: "personal", title: "我的词库" },
+          ...activeThemes(catalog).map((t) => ({ id: t.id, title: t.name })),
         ].map((t) => (
           <button
             key={t.id}
-            className={theme === t.id ? "active" : ""}
+            className={
+              (theme === "all" ? theme : resolveTheme(theme, catalog)) === t.id
+                ? "active"
+                : ""
+            }
             onClick={() => setTheme(t.id)}
           >
             {t.title}
@@ -162,7 +169,7 @@ export function Vocabulary({
                 )}
                 <footer>
                   <span>
-                    {themeName(w.theme)}
+                    {topicName(w.theme, catalog)}
                     {w.review === "draft" ? " · 待核对" : ""}
                   </span>
                   <button

@@ -1,3 +1,4 @@
+import { activeThemes, resolveTheme } from "../domain/themes";
 import { useState, useRef, useEffect } from "react";
 import { Sparkles, Trash2 } from "lucide-react";
 import { Modal } from "./common";
@@ -12,8 +13,9 @@ export function WordEditor({
   word?: Word;
   onClose: () => void;
 }) {
-  const { putWord, notify, account, allWords } = useLearning();
+  const { putWord, notify, account, allWords, settings } = useLearning();
   const [form, setForm] = useState({
+    theme: resolveTheme(word?.theme ?? "personal", settings.themes),
     thai: word?.thai ?? "",
     roman: word?.roman ?? "",
     chinese: word?.chinese ?? "",
@@ -92,7 +94,7 @@ export function WordEditor({
         sentence,
         enrichment: "ready",
         id: pendingId.current,
-        theme: word?.theme ?? "personal",
+        theme: resolveTheme(form.theme, settings.themes),
         source: generated
           ? `${word?.source ?? "个人词库"} · AI 辅助草稿，经用户确认`
           : (word?.source ?? "个人录入；用户确认"),
@@ -139,7 +141,7 @@ export function WordEditor({
         roman: "",
         chinese: "",
         id: pendingId.current,
-        theme: "personal",
+        theme: resolveTheme(form.theme, settings.themes),
         source: "泰语原词收录，等待自动补全",
         review: "draft",
         enrichment: "pending",
@@ -223,6 +225,20 @@ export function WordEditor({
             lang="th"
             placeholder="输入词语或短句"
           />
+        </label>
+        <label>
+          所属主题
+          <select
+            value={resolveTheme(form.theme, settings.themes)}
+            disabled={busy}
+            onChange={(e) => setForm({ ...form, theme: e.target.value })}
+          >
+            {activeThemes(settings.themes).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
         </label>
         {!manual && (
           <>

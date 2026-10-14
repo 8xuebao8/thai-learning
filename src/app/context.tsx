@@ -171,7 +171,9 @@ export function LearningProvider({ children }: { children: ReactNode }) {
     [account, data.epoch],
   );
   const allWords = [
-    ...courseWords.filter((w) => !data.words.some((x) => x.id === w.id)),
+    ...courseWords
+      .filter((w) => !data.words.some((x) => x.id === w.id))
+      .map((w) => ({ ...w, version: 0 })),
     ...data.words,
   ].filter((w) => !w.deleted);
   return (

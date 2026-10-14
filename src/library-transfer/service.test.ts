@@ -68,3 +68,45 @@ it("copies learning context including known status and history without device id
   expect(text).not.toContain("private-device");
   expect(text).not.toContain("event-private");
 });
+it("confirms topic creation and movement atomically, keeping learning history", async () => {
+  await clearAccount("guest");
+  await saveEvent("guest", {
+    id: "known",
+    itemId: "course:meeting",
+    kind: "word",
+    at: 1,
+    result: "correct",
+    assisted: false,
+    mode: "known",
+    deviceId: "guest",
+  });
+  const { snapshot } = await copyLibrary("guest");
+  const p = await prepareImport(
+    "guest",
+    JSON.stringify({
+      format: "thai-library-changes",
+      version: 1,
+      snapshotId: snapshot.id,
+      operations: [
+        { action: "theme_add", id: "custom:travel", name: "旅游" },
+        {
+          action: "move",
+          id: "course:meeting",
+          expectedVersion: 0,
+          theme: "custom:travel",
+        },
+      ],
+    }),
+  );
+  expect((await loadData("guest")).settings.themes).toBeUndefined();
+  expect((await confirmImport("guest", p)).applied).toBe(2);
+  const data = await loadData("guest");
+  expect(
+    data.settings.themes?.find((t) => t.id === "custom:travel")?.name,
+  ).toBe("旅游");
+  expect(data.words.find((w) => w.id === "course:meeting")?.theme).toBe(
+    "custom:travel",
+  );
+  expect(data.events).toHaveLength(1);
+  expect((await confirmImport("guest", p)).applied).toBe(2);
+});

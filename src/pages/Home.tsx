@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 import { useLearning } from "../app/context";
 import { deriveProgress, dateKey, streak } from "../domain/learning";
-import { units, exercises } from "../content/course";
+import { activeThemes, resolveTheme } from "../domain/themes";
+import { units, exercises, personalExercises } from "../content/course";
 import { SectionTitle } from "../components/common";
 import type { Word } from "../domain/model";
 export function Home({
@@ -31,6 +32,14 @@ export function Home({
   const learned = allWords.filter(
     (w) => deriveProgress(events, w.id).status !== "new",
   ).length;
+  const topics = activeThemes(settings.themes).map((t) => ({
+    ...units.find((u) => u.id === t.id),
+    id: t.id,
+    title: t.name,
+    color: units.find((u) => u.id === t.id)?.color ?? "sage",
+    description:
+      units.find((u) => u.id === t.id)?.description ?? "用自己的主题整理表达。",
+  }));
   const icons = [BriefcaseBusiness, GraduationCap, MapPin];
   return (
     <>
@@ -149,9 +158,11 @@ export function Home({
             onAction={() => (location.hash = "/vocabulary")}
           />
           <div className="unit-list">
-            {units.map((unit, i) => {
-              const Icon = icons[i];
-              const words = allWords.filter((w) => w.theme === unit.id);
+            {topics.map((unit, i) => {
+              const Icon = icons[i] ?? Layers;
+              const words = allWords.filter(
+                (w) => resolveTheme(w.theme, settings.themes) === unit.id,
+              );
               const done = words.filter(
                 (w) => deriveProgress(events, w.id).status !== "new",
               ).length;
@@ -171,7 +182,13 @@ export function Home({
                     <div className="unit-bottom">
                       <span>
                         {words.length} 个词语 ·{" "}
-                        {exercises.filter((e) => e.theme === unit.id).length}{" "}
+                        {
+                          [...exercises, ...personalExercises(allWords)].filter(
+                            (e) =>
+                              resolveTheme(e.theme, settings.themes) ===
+                              unit.id,
+                          ).length
+                        }{" "}
                         个句型
                       </span>
                       <span>

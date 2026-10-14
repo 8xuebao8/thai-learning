@@ -2161,3 +2161,11 @@ details p {
 .import-fields{margin:12px 0}.import-fields>div{padding:8px;border-bottom:1px solid #e1e6df}.import-fields dt{font-weight:700}.import-fields dd{margin:4px 0}
 .import-fields pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:14px;margin:6px 0}.import-changed{background:#fff3d6;border-radius:6px}
 @media(max-width:600px){.library-transfer{padding:14px}.library-transfer .button-row{flex-wrap:wrap}.import-actions button{flex:1}.import-preview{max-height:50vh}}
+
+.theme-manager { margin-top: 1rem; }
+.theme-form { display: grid; gap: 1rem; margin-top: 1rem; max-width: 700px; }
+.theme-form label { display: grid; gap: .4rem; }
+.theme-word-list { max-height: 300px; overflow: auto; border: 1px solid var(--border, #dce2dc); border-radius: 12px; padding: 1rem; }
+.theme-word-list label { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; }
+.theme-word-list input { width: auto; }
+.import-theme_delete { border-color: #b75d4e; }
