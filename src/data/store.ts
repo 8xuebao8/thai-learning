@@ -300,3 +300,10 @@ export async function adoptEpoch(
     },
   );
 }
+
+export function applyGuestImport(words: Word[]) {
+  const parsed = words.map(w => wordSchema.parse(w));
+  const ids = new Set(parsed.map(w => w.id));
+  guest.words = [...guest.words.filter(w => !ids.has(w.id)), ...parsed];
+  guestChanged();
+}

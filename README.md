@@ -130,3 +130,7 @@ supabase functions deploy generate-entry
 `src/domain` 管理学习规则，`src/data` 管理本地数据库，`src/services` 管理外部接口与同步，`src/pages` 和 `src/components` 管理界面，`src/content` 管理课程，`supabase` 包含数据库及云函数，`.github/workflows` 包含发布流程。
 
 设计与实施记录位于 `docs/superpowers`。
+
+## AI 批量整理词库
+
+词汇学习页提供“复制词库＋AI 提示词”和“导入 AI 修改”。复制后可交给任意聊天模型讨论，粘贴最终 JSON 后弹窗对比新增、修改、删除、恢复，确认才执行；支持个人拼句练习。删除为可恢复隐藏，重复包不会重复新增。登录用户提交云端，访客临时体验刷新清空。需先应用 `202610140004_library_import.sql`。详见 [导入说明](library-transfer/README.md)。

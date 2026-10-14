@@ -1,3 +1,4 @@
+import { LibraryTransfer } from "../library-transfer/LibraryTransfer";
 import { useState } from "react";
 import { Search, ArrowUpRight, Pencil, Plus, Layers } from "lucide-react";
 import { useLearning } from "../app/context";
@@ -53,6 +54,7 @@ export function Vocabulary({
           添加词语
         </button>
       </div>
+      <LibraryTransfer />
       <div className="toolbar">
         <div className="search-box">
           <Search size={18} />

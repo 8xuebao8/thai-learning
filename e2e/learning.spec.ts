@@ -10,7 +10,7 @@ test("email login masks the password and reports a mocked credential error", asy
       contentType: "application/json",
       headers: {
         "X-Supabase-Api-Version": "2024-01-01",
-        "Access-Control-Allow-Origin": "http://127.0.0.1:5173",
+        "Access-Control-Allow-Origin": route.request().headers().origin,
         "Access-Control-Expose-Headers": "X-Supabase-Api-Version",
       },
       body: JSON.stringify({

@@ -42,7 +42,11 @@ export function Sentences() {
     setResult(null);
     setHint(false);
     setShowAssist(false);
-  }, [exercise.id]);
+  }, [
+    exercise.id,
+    JSON.stringify(exercise.tiles),
+    JSON.stringify(exercise.answers),
+  ]);
   async function submit() {
     if (busy || result === "correct" || result === "reveal") return;
     setBusy(true);
@@ -136,7 +140,8 @@ export function Sentences() {
               </span>
             )}
             {selected.map((id) => {
-              const tile = exercise.tiles.find((t) => t.id === id)!;
+              const tile = exercise.tiles.find((t) => t.id === id);
+            if (!tile) return null;
               return (
                 <button
                   className="tile selected"

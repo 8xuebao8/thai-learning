@@ -396,7 +396,7 @@ export const themeName = (id: Theme) =>
   units.find((u) => u.id === id)?.title ?? "我的词库";
 export function personalExercises(words: Word[]): Exercise[] {
   return words
-    .filter((w) => w.sentence && !w.deleted)
+    .filter((w) => w.sentence && !w.deleted && w.enrichment !== "pending")
     .map((w) => {
       const s = w.sentence!;
       const tokens = s.tokens.map((t) => t.thai);

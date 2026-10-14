@@ -265,3 +265,25 @@ async function performReset(account: string, epoch: number, requestId: string) {
     .parse(await response.json());
   await adoptEpoch(account, epoch, result.epoch);
 }
+
+// Serialize explicit imports with background sync and account initialization.
+export function withAccountLock<T>(
+  account: string,
+  task: (sync: () => Promise<void>) => Promise<T>,
+): Promise<T> {
+  const previous = active.get(account);
+  const result = (async () => {
+    if (previous) await previous.catch(() => {});
+    return task(() => performSync(account));
+  })();
+  const marker = result
+    .then(
+      () => {},
+      () => {},
+    )
+    .finally(() => {
+      if (active.get(account) === marker) active.delete(account);
+    });
+  active.set(account, marker);
+  return result;
+}

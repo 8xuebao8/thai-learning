@@ -2150,3 +2150,14 @@ details p {
 .long-term-goals .button-row {
   margin-top: 20px;
 }
+
+.library-transfer{border:1px solid var(--border,#ddd);border-radius:18px;padding:20px;margin-bottom:24px;background:var(--surface,#fff)}
+.library-transfer p{margin:8px 0 14px}.import-input{display:grid;gap:12px;margin-top:18px}
+.import-input textarea,.modal textarea{width:100%;resize:vertical;min-height:150px;padding:12px;border:1px solid #bbc4bd;border-radius:10px;font:inherit;box-sizing:border-box}
+.import-preview{display:grid;gap:12px;max-height:55vh;overflow:auto;padding:4px}
+.import-row{border:1px solid #d8ded8;border-radius:12px;padding:14px;overflow-wrap:anywhere}
+.import-row h3{margin:0 0 8px}.import-row p{margin:6px 0}.import-delete{border-left:5px solid #b84545}.import-add{border-left:5px solid #447b55}
+.import-update{border-left:5px solid #b18a32}.import-error{color:#a22e2e}.import-summary{font-weight:700}.import-actions{margin-top:18px}
+.import-fields{margin:12px 0}.import-fields>div{padding:8px;border-bottom:1px solid #e1e6df}.import-fields dt{font-weight:700}.import-fields dd{margin:4px 0}
+.import-fields pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:14px;margin:6px 0}.import-changed{background:#fff3d6;border-radius:6px}
+@media(max-width:600px){.library-transfer{padding:14px}.library-transfer .button-row{flex-wrap:wrap}.import-actions button{flex:1}.import-preview{max-height:50vh}}
