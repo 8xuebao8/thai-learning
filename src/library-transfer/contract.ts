@@ -82,6 +82,7 @@ export type ChangePackage = z.infer<typeof packageSchema>;
 export type LibraryScope = "all" | "words" | "sentences";
 export type Snapshot = {
   scope?: LibraryScope;
+  catalogMode?: "independent";
   id: string;
   epoch: number;
   words: Word[];
@@ -192,7 +193,7 @@ function previewCore(
   catalog: Topic[] = defaultCatalog,
 ): PreviewRow[] {
   if (p.snapshotId !== s.id)
-    throw new Error("找不到对应词库快照，请重新复制词库给 AI。");
+    throw new Error("找不到对应词库快照，请重新下载资料库 JSON给 AI。");
   const topicRows = new Map<number, PreviewRow>();
   let nextCatalog = structuredClone(catalog);
   const changedCatalog = stable(s.themes ?? defaultCatalog) !== stable(catalog);
@@ -216,7 +217,7 @@ function previewCore(
     topicRows.set(index, row);
     if (changedCatalog) {
       row.status = "conflict";
-      row.reason = "主题目录已改变，请重新复制词库。";
+      row.reason = "主题目录已改变，请重新下载资料库 JSON。";
       return;
     }
     try {
@@ -288,7 +289,7 @@ function previewCore(
         return {
           ...row,
           status: "conflict",
-          reason: "主题目录已改变，请重新复制词库。",
+          reason: "主题目录已改变，请重新下载资料库 JSON。",
         };
       if ("id" in o) {
         if (counts.get(o.id) !== 1)
@@ -303,7 +304,7 @@ function previewCore(
           return {
             ...row,
             status: "conflict",
-            reason: "词条已改变或不在导出快照中，请重新复制词库。",
+            reason: "词条已改变或不在导出快照中，请重新下载资料库 JSON。",
           };
         if (o.action === "restore" ? !before.deleted : !!before.deleted)
           throw new Error(
@@ -453,6 +454,10 @@ function previewCore(
             destination: topicName(e.theme, nextCatalog),
           })),
       ];
+      if (s.catalogMode === "independent" && s.scope !== "all")
+        row.moved = row.moved.filter(
+          (w) => w.kind === (s.scope === "sentences" ? "sentence" : "word"),
+        );
       row.reason = `删除主题，默认迁往「${topicName(id, nextCatalog)}」；具体内容去向如下，学习记录保留。`;
     }
   return result;
@@ -497,7 +502,15 @@ export function previewPackage(
   idScope = s.id,
   catalog: Topic[] = defaultCatalog,
 ): PreviewRow[] {
-  const rows = previewCore(p, s, current, idScope, catalog);
+  const isolated = s.catalogMode === "independent" && s.scope !== "all";
+  const belongs = (w: Word) => !!w.sentence === (s.scope === "sentences");
+  const rows = previewCore(
+    p,
+    isolated ? { ...s, words: s.words.filter(belongs) } : s,
+    isolated ? current.filter(belongs) : current,
+    idScope,
+    catalog,
+  );
   const scope = s.scope ?? "all";
   const expectedFormat =
     scope === "sentences" ? "thai-sentence-changes" : "thai-library-changes";
@@ -507,6 +520,9 @@ export function previewPackage(
       p.format !== expectedFormat
         ? "修改包与快照不匹配，请使用对应的词库或句库入口。"
         : "";
+    if (s.catalogMode !== "independent" && op.action.startsWith("theme_"))
+      reason =
+        "这份快照使用旧的共享主题，请重新下载对应资料库 JSON 后生成主题修改。";
     if (scope !== "all" && !op.action.startsWith("theme_")) {
       const before =
         "id" in op ? s.words.find((w) => w.id === op.id) : undefined;

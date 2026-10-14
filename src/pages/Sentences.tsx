@@ -1,5 +1,5 @@
 import { LibraryTransfer } from "../library-transfer/LibraryTransfer";
-import { activeThemes, resolveTheme } from "../domain/themes";
+import { activeThemes, resolveTheme, catalogFor } from "../domain/themes";
 import { useEffect, useState } from "react";
 import { ArrowRight, RotateCcw, Undo2, Lightbulb, Eye } from "lucide-react";
 import { useLearning } from "../app/context";
@@ -10,6 +10,7 @@ import { AudioButton, Script, Empty } from "../components/common";
 export function Sentences() {
   const { account, record, notify, settings, putSettings, allWords } =
     useLearning();
+  const catalog = catalogFor(settings, "sentences");
   const [theme, setTheme] = useState("work");
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
@@ -20,14 +21,15 @@ export function Sentences() {
   const [hint, setHint] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showAssist, setShowAssist] = useState(false);
-  const topics = activeThemes(settings.themes).map((t) => ({
+  const topics = activeThemes(catalog).map((t) => ({
     id: t.id,
-    title: t.id === "personal" && !settings.themes ? "我的句子" : t.name,
+    title:
+      t.id === "personal" && !settings.sentenceThemes && !settings.themes
+        ? "我的句子"
+        : t.name,
   }));
   const list = [...exercises, ...personalExercises(allWords)].filter(
-    (e) =>
-      resolveTheme(e.theme, settings.themes) ===
-      resolveTheme(theme, settings.themes),
+    (e) => resolveTheme(e.theme, catalog) === resolveTheme(theme, catalog),
   );
   const exercise = list[index % list.length] ?? exercises[0];
   const [bank, setBank] = useState(() => shuffle(exercise.tiles));
@@ -99,9 +101,7 @@ export function Sentences() {
         <div className="tabs">
           {topics.map((u) => (
             <button
-              className={
-                resolveTheme(theme, settings.themes) === u.id ? "active" : ""
-              }
+              className={resolveTheme(theme, catalog) === u.id ? "active" : ""}
               key={u.id}
               onClick={() => {
                 setTheme(u.id);

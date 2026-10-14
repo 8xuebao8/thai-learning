@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defaultCatalog } from "../domain/themes";
+import { defaultCatalog, catalogFor, replaceCatalog } from "../domain/themes";
 import { exportScopedPrompt, scopedLearningContext } from "./scoped-export";
 import { courseWords } from "../content/course";
 import {
@@ -135,10 +135,11 @@ export async function copyLibrary(
   const data = await current(account);
   const snapshot: Snapshot = {
     scope,
+    catalogMode: "independent",
     id: crypto.randomUUID(),
     epoch: data.epoch,
     words: data.words,
-    themes: data.settings.themes ?? defaultCatalog,
+    themes: catalogFor(data.settings, scope),
   };
   await setMeta(`${account}:ai-snapshot:${snapshot.id}`, snapshot);
   return {
@@ -166,21 +167,22 @@ export async function prepareImport(
   );
   if (!s)
     throw new Error(
-      "本浏览器没有这份词库快照，请先复制词库给 AI；访客刷新后快照会失效。",
+      "本浏览器没有这份词库快照，请先下载对应资料库 JSON 给 AI；访客刷新后快照会失效。",
     );
   if (
     scope !== "all" &&
     s.scope !== scope &&
     !(scope === "words" && (!s.scope || s.scope === "all"))
   )
-    throw new Error("快照属于另一入口，请在对应页面重新复制资料和提示词。");
+    throw new Error("快照属于另一入口，请在对应页面重新下载资料库 JSON。");
   if (
     p.format !==
     (s.scope === "sentences" ? "thai-sentence-changes" : "thai-library-changes")
   )
     throw new Error("修改包类型不匹配，请使用词库或句库的对应入口。");
   const data = await current(account);
-  if (data.epoch !== s.epoch) throw new Error("账号已初始化，请重新复制词库。");
+  if (data.epoch !== s.epoch)
+    throw new Error("账号已初始化，请重新下载资料库 JSON。");
   const request = await digest(p);
   const receipt = await getMeta<Receipt | undefined>(
     `${account}:ai-receipt:${s.epoch}:${request}`,
@@ -196,7 +198,7 @@ export async function prepareImport(
     s,
     data.words,
     request,
-    data.settings.themes ?? defaultCatalog,
+    catalogFor(data.settings, s.scope ?? "words"),
   );
   const prepared: Prepared = {
     snapshot: s,
@@ -216,6 +218,13 @@ export async function confirmImport(
   onProgress?: (value: string) => void,
 ): Promise<Receipt> {
   if (p.receipt) return p.receipt;
+  if (
+    p.snapshot.catalogMode !== "independent" &&
+    p.package.operations.some((o) => o.action.startsWith("theme_"))
+  )
+    throw new Error(
+      "旧任务含共享主题修改，请下载当前资料库 JSON 重新生成；已完成部分会保留。",
+    );
   if (p.rows.some((r) => r.status === "invalid" || r.status === "conflict"))
     throw new Error("请先修正错误或冲突，再重新预览。");
   const execute = async (sync?: () => Promise<void>) => {
@@ -226,7 +235,7 @@ export async function confirmImport(
     );
     const data = await current(account);
     if (!s || data.epoch !== p.snapshot.epoch)
-      throw new Error("账号或快照已变化，请重新复制词库。");
+      throw new Error("账号或快照已变化，请重新下载资料库 JSON。");
     const receiptKey = `${account}:ai-receipt:${s.epoch}:${p.request}`;
     const old = await getMeta<Receipt | null>(receiptKey, null);
     if (old) return old;
@@ -247,7 +256,7 @@ export async function confirmImport(
           s,
           data.words,
           p.request,
-          data.settings.themes ?? defaultCatalog,
+          catalogFor(data.settings, p.snapshot.scope ?? "words"),
         ),
       ) !== stable(p.rows)
     )
@@ -266,10 +275,11 @@ export async function confirmImport(
     // Payload timestamps must be stable for a retry after a lost response.
     records.forEach((r) => (r.payload.updatedAt = 0));
     const nextSettings = ready.some((r) => r.themeAfter)
-      ? {
-          ...data.settings,
-          themes: catalogAfter(ready, data.settings.themes ?? defaultCatalog),
-        }
+      ? replaceCatalog(
+          data.settings,
+          s.scope ?? "words",
+          catalogAfter(ready, catalogFor(data.settings, s.scope ?? "words")),
+        )
       : undefined;
     const cloudRecords: {
       id: string;
@@ -343,7 +353,7 @@ export async function confirmImport(
       if (auth.session?.user.id !== account)
         throw new Error("账号已变化，请重新登录。");
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/import_learning_changes_v2`,
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/import_learning_changes_v3`,
         {
           method: "POST",
           headers: {
@@ -352,6 +362,7 @@ export async function confirmImport(
             Authorization: `Bearer ${auth.session.access_token}`,
           },
           body: JSON.stringify({
+            p_scope: s.scope === "sentences" ? "sentences" : "words",
             p_epoch: s.epoch,
             p_seq: p.seq,
             p_request: p.request,
@@ -374,7 +385,7 @@ export async function confirmImport(
         .parse(await response.json());
       if (result.status !== "applied")
         throw new Error(
-          "云端数据已变化，未执行本批修改。请重新复制词库并预览。",
+          "云端数据已变化，未执行本批修改。请重新下载资料库 JSON并预览。",
         );
       if (
         result.acks?.length !== cloudRecords.length ||
@@ -398,16 +409,21 @@ export async function confirmImport(
 export async function prepareOperations(
   account: string,
   operations: ChangePackage["operations"],
+  scope: LibraryScope = "all",
 ) {
-  const { snapshot } = await copyLibrary(account);
+  const { snapshot } = await copyLibrary(account, scope);
   return prepareImport(
     account,
     JSON.stringify({
-      format: "thai-library-changes",
+      format:
+        scope === "sentences"
+          ? "thai-sentence-changes"
+          : "thai-library-changes",
       version: 1,
       snapshotId: snapshot.id,
       operations,
     }),
+    scope,
   );
 }
 
@@ -495,11 +511,11 @@ async function executeBulk(
       const expectedCatalog =
         i === 0 ? (p.snapshot.themes ?? defaultCatalog) : finalCatalog;
       if (
-        stable(data.settings.themes ?? defaultCatalog) !==
+        stable(catalogFor(data.settings, p.snapshot.scope ?? "words")) !==
         stable(expectedCatalog)
       )
         throw new Error(
-          "主题目录已变化，剩余操作停止；请复制最新词库重新生成。",
+          "主题目录已变化，剩余操作停止；请下载最新资料库 JSON 重新生成。",
         );
       for (const record of records.filter((r) => r.kind === "word")) {
         const row = p.rows.find((r) => r.after?.id === record.id)!;
@@ -520,6 +536,9 @@ async function executeBulk(
           data.words.some(
             (w) =>
               w.id !== record.id &&
+              (p.snapshot.catalogMode !== "independent" ||
+                p.snapshot.scope === "all" ||
+                !!w.sentence === (p.snapshot.scope === "sentences")) &&
               !w.deleted &&
               w.thai.normalize("NFC").trim() ===
                 row.after!.thai.normalize("NFC").trim(),
@@ -529,7 +548,8 @@ async function executeBulk(
             `词条 ${row.thai} 已存在，剩余操作停止，请重新生成。`,
           );
       }
-      result = await call("import_learning_changes_v2", {
+      result = await call("import_learning_changes_v3", {
+        p_scope: p.snapshot.scope === "sentences" ? "sentences" : "words",
         p_epoch: p.snapshot.epoch,
         p_seq: data.seq,
         p_request: request,

@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { useLearning } from "../app/context";
-import { activeThemes, defaultCatalog, resolveTheme } from "../domain/themes";
+import { activeThemes, catalogFor, resolveTheme } from "../domain/themes";
 import type { ChangePackage } from "./contract";
 export function ThemeManager({
   busy,
+  scope = "words",
   onPreview,
 }: {
   busy: boolean;
+  scope?: "words" | "sentences";
   onPreview: (ops: ChangePackage["operations"]) => void;
 }) {
   const { settings, allWords } = useLearning();
-  const catalog = settings.themes ?? defaultCatalog,
+  const catalog = catalogFor(settings, scope),
     topics = activeThemes(catalog);
   const [open, setOpen] = useState(false),
     [mode, setMode] = useState("theme_add");
@@ -21,7 +23,9 @@ export function ThemeManager({
   const sourceId = topics.some((t) => t.id === source) ? source : "personal";
   const targetId = topics.some((t) => t.id === target) ? target : "personal";
   const words = allWords.filter(
-    (w) => resolveTheme(w.theme, catalog) === sourceId,
+    (w) =>
+      !!w.sentence === (scope === "sentences") &&
+      resolveTheme(w.theme, catalog) === sourceId,
   );
   const chosen = words.filter((w) => selected.includes(w.id));
   function preview() {
@@ -50,7 +54,9 @@ export function ThemeManager({
         disabled={busy}
         onClick={() => setOpen(!open)}
       >
-        管理主题与移动词语
+        {scope === "sentences"
+          ? "管理句库主题与移动句子"
+          : "管理主题与移动词语"}
       </button>
       {open && (
         <div className="theme-form">
@@ -123,12 +129,12 @@ export function ThemeManager({
           )}
           {mode === "theme_delete" && (
             <p>
-              删除主题后，词语与拼句迁往所选主题，学习记录保留。归档主题（ID：personal）不能删除。
+              删除主题后，仅本资料库内容迁往所选主题，学习记录保留，另一资料库不受影响。归档主题（ID：personal）不能删除。
             </p>
           )}
           {mode === "move" && (
             <fieldset className="theme-word-list">
-              <legend>选择词语（每批最多100个）</legend>
+              <legend>选择内容（每批最多100个）</legend>
               <button
                 type="button"
                 className="text-button"
@@ -160,7 +166,7 @@ export function ThemeManager({
                   </span>
                 </label>
               ))}
-              {!words.length && <p>这个主题还没有词语。</p>}
+              {!words.length && <p>这个主题还没有可移动的个人内容。</p>}
             </fieldset>
           )}
           <button

@@ -1,3 +1,4 @@
+import { downloadAiContext } from "./download";
 import { ThemeManager } from "./ThemeManager";
 import { defaultCatalog, topicName } from "../domain/themes";
 import { MAX_IMPORT_BYTES, catalogAfter, type LibraryScope } from "./contract";
@@ -77,12 +78,12 @@ export function LibraryTransfer({
 }) {
   const sentences = scope === "sentences";
   const library = sentences ? "句库" : "词库";
+  const actionNames = { ...names, move: sentences ? "移动句子" : names.move };
   const { account } = useLearning();
   const [input, setInput] = useState("");
   const [open, setOpen] = useState(false);
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [fallback, setFallback] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -143,15 +144,13 @@ export function LibraryTransfer({
     setPrepared(null);
     setInput("");
   }
-  async function copy() {
+  async function download() {
     await run(async () => {
-      const { text } = await copyLibrary(account, scope);
-      try {
-        await navigator.clipboard.writeText(text);
-        setMessage(`已复制${library}、对应学习进度和提示词，可以粘贴给 AI。`);
-      } catch {
-        setFallback(text);
-      }
+      const { snapshot, text } = await copyLibrary(account, scope);
+      downloadAiContext(snapshot, text, scope);
+      setMessage(
+        `已下载${library} JSON，请上传给 AI，再将生成的修改包导入此处。`,
+      );
     });
   }
   async function preview() {
@@ -172,18 +171,18 @@ export function LibraryTransfer({
         <strong>用 AI 整理{library}</strong>
         <p className="muted">
           {sentences
-            ? "复制句库、分词块、词序说明和拼句进度给 AI，再上传句库修改包。内置拼句作为只读参考。"
-            : "复制词汇、备注和词汇学习进度给 AI，再上传词库修改包。拼句请在拼句练习页整理。"}
-          预览确认前不会改动资料。主题目录共用，重命名或删除主题会影响词汇和拼句两边。
+            ? "下载包含句库、分词块、词序说明和拼句进度的 JSON 文件，上传给 AI，再上传句库修改包。内置拼句作为只读参考。"
+            : "下载包含词汇、备注和词汇学习进度的 JSON 文件，上传给 AI，再上传词库修改包。拼句请在拼句练习页整理。"}
+          预览确认前不会改动资料。词库与句库的主题目录独立管理。
         </p>
       </div>
       <div className="button-row">
         <button
           className="secondary"
           disabled={busy}
-          onClick={() => void copy()}
+          onClick={() => void download()}
         >
-          复制{library}＋AI 提示词
+          下载{library} JSON
         </button>
         <button
           className="secondary"
@@ -196,16 +195,15 @@ export function LibraryTransfer({
           {sentences ? "导入 AI 句库修改" : "导入 AI 修改"}
         </button>
       </div>
-      {!sentences && (
-        <ThemeManager
-          busy={busy}
-          onPreview={(ops) =>
-            void run(async () =>
-              setPrepared(await prepareOperations(account, ops)),
-            )
-          }
-        />
-      )}
+      <ThemeManager
+        scope={scope}
+        busy={busy}
+        onPreview={(ops) =>
+          void run(async () =>
+            setPrepared(await prepareOperations(account, ops, scope)),
+          )
+        }
+      />
       {account === "guest" && (
         <p className="muted">
           当前为临时体验：导入内容和快照刷新后消失，登录不会合并访客数据。
@@ -270,21 +268,6 @@ export function LibraryTransfer({
           </button>
         </div>
       )}
-      {fallback && (
-        <Modal title={`复制${library}和提示词`} onClose={() => setFallback("")}>
-          <p>浏览器没有允许自动复制。请选择下方全部内容后复制。</p>
-          <textarea
-            aria-label={`${library}和提示词`}
-            rows={12}
-            readOnly
-            value={fallback}
-            onFocus={(e) => e.target.select()}
-          />
-          <button className="secondary" onClick={() => setFallback("")}>
-            完成
-          </button>
-        </Modal>
-      )}
       {prepared && (
         <Modal
           title={`确认${library}修改`}
@@ -297,16 +280,17 @@ export function LibraryTransfer({
         >
           {(!prepared.snapshot.scope || prepared.snapshot.scope === "all") && (
             <p role="alert">
-              这是兼容的全库快照，可能同时包含词汇和拼句，请核对下方全部操作；新的复制入口已分开。
+              这是旧版全库快照，请核对下方全部操作；如需修改主题，请从对应入口重新下载
+              JSON。
             </p>
           )}
           {prepared.rows.some((r) => r.themeAfter) && (
             <p role="alert">
-              主题目录为词汇和拼句共用，以下主题变更会影响两边。
+              以下主题变更仅影响当前{library}，请核对主题与迁移内容。
             </p>
           )}
           <p className="import-summary">
-            {Object.entries(names)
+            {Object.entries(actionNames)
               .map(
                 ([a, n]) =>
                   `${n} ${prepared.rows.filter((r) => r.action === a && r.status === "ready").length}`,
@@ -341,7 +325,8 @@ export function LibraryTransfer({
           )}
           {blocked && (
             <p role="alert" className="import-error">
-              有错误或冲突，本批次不会执行。请取消并修正修改包，或重新复制词库。
+              有错误或冲突，本批次不会执行。请取消并修正修改包，或重新下载
+              {library} JSON。
             </p>
           )}
           {error && (
@@ -357,7 +342,7 @@ export function LibraryTransfer({
                 className={`import-row import-${r.action}`}
               >
                 <h3>
-                  {r.index + 1}. {names[r.action]} · {r.thai}
+                  {r.index + 1}. {actionNames[r.action]} · {r.thai}
                 </h3>
                 <p>{r.after?.chinese ?? r.before?.chinese}</p>
                 {r.after?.enrichment === "pending" && !r.after.deleted && (
@@ -481,7 +466,7 @@ export function LibraryTransfer({
                 </strong>
                 <p>
                   {r.status === "ready"
-                    ? `${names[r.action]}成功${r.after?.enrichment === "pending" ? " · 待补全" : ""}`
+                    ? `${actionNames[r.action]}成功${r.after?.enrichment === "pending" ? " · 待补全" : ""}`
                     : r.reason}
                 </p>
                 {r.status === "ready" && (

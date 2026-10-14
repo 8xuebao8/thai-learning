@@ -1,33 +1,28 @@
+import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
-test("sentence library has independent copy/import and rejects vocabulary cross-import", async ({
+test("sentence library has independent download/import and rejects vocabulary cross-import", async ({
   page,
 }) => {
-  await page.addInitScript(() =>
-    Object.defineProperty(navigator, "clipboard", {
-      value: {
-        writeText: async (text: string) => {
-          (window as any).copied = text;
-        },
-      },
-    }),
-  );
   await page.goto("/#/sentences");
+  const downloadPromise = page.waitForEvent("download");
   await page
-    .getByRole("button", { name: "复制句库＋AI 提示词", exact: true })
+    .getByRole("button", { name: "下载句库 JSON", exact: true })
     .click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "已复制句库" }),
-  ).toBeVisible();
-  const copied = await page.evaluate(() => (window as any).copied as string);
-  const snapshot = JSON.parse(
-    copied
-      .split("个人句库快照（含已删除句供restore；不含登录信息）：\n")[1]
-      .split("\n内置拼句（只读参考）：\n")[0],
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(
+    /^thai-sentences-ai-\d{4}-\d{2}-\d{2}\.json$/,
   );
+  const exported = JSON.parse(await readFile((await download.path())!, "utf8"));
+  expect(exported.format).toBe("thai-learning-ai-context");
+  expect(exported.library).toBe("sentences");
+  expect(exported.snapshot.scope).toBe("sentences");
+  expect(exported.snapshot.words).toBeUndefined();
+  expect(exported.prompt).toContain("thai-sentence-changes");
+  expect(exported.readOnly.sentences.length).toBeGreaterThan(0);
+  expect(exported.readOnly.sentences.every((s: any) => s.readOnly)).toBe(true);
+  const snapshot = exported.snapshot;
   expect(snapshot.sentences).toEqual([]);
-  expect(JSON.parse(copied.split("学习上下文（只读）：\n")[1]).words).toEqual(
-    [],
-  );
+  expect(exported.learningContext.words).toEqual([]);
   const pack = JSON.stringify({
     format: "thai-sentence-changes",
     version: 1,
@@ -81,18 +76,15 @@ test("sentence library has independent copy/import and rejects vocabulary cross-
   });
   // Use in-app navigation to preserve the temporary guest account.
   await page.getByRole("link", { name: "词汇学习", exact: true }).click();
+  const wordDownloadPromise = page.waitForEvent("download");
   await page
-    .getByRole("button", { name: "复制词库＋AI 提示词", exact: true })
+    .getByRole("button", { name: "下载词库 JSON", exact: true })
     .click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "已复制词库" }),
-  ).toBeVisible();
-  const wordText = await page.evaluate(() => (window as any).copied as string);
-  const words = JSON.parse(
-    wordText
-      .split("词库快照（含已删除词供restore；不含登录信息）：\n")[1]
-      .split("\n\n学习上下文（只读）：\n")[0],
+  const wordDownload = await wordDownloadPromise;
+  const wordExport = JSON.parse(
+    await readFile((await wordDownload.path())!, "utf8"),
   );
+  const words = wordExport.snapshot;
   expect(words.words.every((w: any) => !w.sentence)).toBe(true);
   await page.getByRole("button", { name: "导入 AI 修改", exact: true }).click();
   await page.getByLabel("AI 修改包").fill(pack);

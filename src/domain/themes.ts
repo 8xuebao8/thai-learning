@@ -77,3 +77,26 @@ export const catalogSchema = z
       }
     }
   });
+
+// Preserve the legacy catalog as the initial value for each independent library.
+export function catalogFor(
+  settings: { themes?: Topic[]; sentenceThemes?: Topic[] },
+  scope: "words" | "sentences" | "all" = "words",
+): Topic[] {
+  return scope === "sentences"
+    ? (settings.sentenceThemes ?? settings.themes ?? defaultCatalog)
+    : (settings.themes ?? defaultCatalog);
+}
+export function replaceCatalog<
+  T extends { themes?: Topic[]; sentenceThemes?: Topic[] },
+>(settings: T, scope: "words" | "sentences" | "all", catalog: Topic[]): T {
+  return {
+    ...settings,
+    themes: structuredClone(
+      scope === "sentences" ? catalogFor(settings, "words") : catalog,
+    ),
+    sentenceThemes: structuredClone(
+      scope === "sentences" ? catalog : catalogFor(settings, "sentences"),
+    ),
+  };
+}

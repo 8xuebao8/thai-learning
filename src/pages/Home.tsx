@@ -12,7 +12,7 @@ import {
 import { useLearning } from "../app/context";
 import { deriveProgress, dateKey, streak } from "../domain/learning";
 import { activeThemes, resolveTheme } from "../domain/themes";
-import { units, exercises, personalExercises } from "../content/course";
+import { units } from "../content/course";
 import { SectionTitle } from "../components/common";
 import type { Word } from "../domain/model";
 export function Home({
@@ -22,7 +22,8 @@ export function Home({
   study: (words: Word[], review?: boolean) => void;
   onAdd: () => void;
 }) {
-  const { allWords, events, settings } = useLearning();
+  const { allWords: content, events, settings } = useLearning();
+  const allWords = content.filter((w) => !w.sentence);
   const today = new Set(
     events
       .filter((e) => dateKey(e.at) === dateKey(Date.now()))
@@ -180,17 +181,7 @@ export function Home({
                     <h3>{unit.title}</h3>
                     <p>{unit.description}</p>
                     <div className="unit-bottom">
-                      <span>
-                        {words.length} 个词语 ·{" "}
-                        {
-                          [...exercises, ...personalExercises(allWords)].filter(
-                            (e) =>
-                              resolveTheme(e.theme, settings.themes) ===
-                              unit.id,
-                          ).length
-                        }{" "}
-                        个句型
-                      </span>
+                      <span>{words.length} 个词语</span>
                       <span>
                         {done}/{words.length}
                       </span>

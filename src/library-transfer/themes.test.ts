@@ -3,6 +3,7 @@ import { courseWords } from "../content/course";
 import { defaultCatalog } from "../domain/themes";
 import { packageSchema, previewPackage } from "./contract";
 const snapshot = {
+  catalogMode: "independent" as const,
   id: "snapshot",
   epoch: 0,
   words: [{ ...courseWords[0], version: 0 }],

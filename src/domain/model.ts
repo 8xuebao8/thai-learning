@@ -88,6 +88,7 @@ export const longTermSchema = z.object({
 export type LongTermGoal = z.infer<typeof longTermSchema>;
 export const settingsSchema = z.object({
   themes: catalogSchema.optional(),
+  sentenceThemes: catalogSchema.optional(),
   goal: z.number().int().min(1).max(200),
   longTerm: longTermSchema.optional(),
   display: z.enum(["both", "roman", "thai"]),

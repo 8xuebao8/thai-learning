@@ -34,6 +34,7 @@ export function Vocabulary({
   const [filter, setFilter] = useState("all");
   const words = allWords.filter(
     (w) =>
+      !w.sentence &&
       (theme === "all" ||
         resolveTheme(w.theme, catalog) === resolveTheme(theme, catalog)) &&
       `${w.thai} ${w.roman} ${w.chinese}`

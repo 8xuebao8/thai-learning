@@ -1,4 +1,4 @@
-import { activeThemes, resolveTheme } from "../domain/themes";
+import { activeThemes, resolveTheme, catalogFor } from "../domain/themes";
 import { useState, useRef, useEffect } from "react";
 import { Sparkles, Trash2 } from "lucide-react";
 import { Modal } from "./common";
@@ -14,8 +14,12 @@ export function WordEditor({
   onClose: () => void;
 }) {
   const { putWord, notify, account, allWords, settings } = useLearning();
+  const initialCatalog = catalogFor(
+    settings,
+    word?.sentence ? "sentences" : "words",
+  );
   const [form, setForm] = useState({
-    theme: resolveTheme(word?.theme ?? "personal", settings.themes),
+    theme: resolveTheme(word?.theme ?? "personal", initialCatalog),
     thai: word?.thai ?? "",
     roman: word?.roman ?? "",
     chinese: word?.chinese ?? "",
@@ -43,6 +47,7 @@ export function WordEditor({
     word?.sentence?.tokens.map((t) => t.roman).join(" | ") ?? "",
   );
   const [tileConfirmed, setTileConfirmed] = useState(!!word?.sentence);
+  const catalog = catalogFor(settings, tileConfirmed ? "sentences" : "words");
   const [alternatives, setAlternatives] = useState(
     word?.sentence?.alternatives
       .map((a) => a.map((i) => i + 1).join(" "))
@@ -94,7 +99,10 @@ export function WordEditor({
         sentence,
         enrichment: "ready",
         id: pendingId.current,
-        theme: resolveTheme(form.theme, settings.themes),
+        theme: resolveTheme(
+          form.theme,
+          catalogFor(settings, sentence ? "sentences" : "words"),
+        ),
         source: generated
           ? `${word?.source ?? "个人词库"} · AI 辅助草稿，经用户确认`
           : (word?.source ?? "个人录入；用户确认"),
@@ -141,7 +149,7 @@ export function WordEditor({
         roman: "",
         chinese: "",
         id: pendingId.current,
-        theme: resolveTheme(form.theme, settings.themes),
+        theme: resolveTheme(form.theme, catalog),
         source: "泰语原词收录，等待自动补全",
         review: "draft",
         enrichment: "pending",
@@ -229,11 +237,11 @@ export function WordEditor({
         <label>
           所属主题
           <select
-            value={resolveTheme(form.theme, settings.themes)}
+            value={resolveTheme(form.theme, catalog)}
             disabled={busy}
             onChange={(e) => setForm({ ...form, theme: e.target.value })}
           >
-            {activeThemes(settings.themes).map((t) => (
+            {activeThemes(catalog).map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>

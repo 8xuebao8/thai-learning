@@ -1,30 +1,26 @@
+import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 test("AI import previews additions/deletions and cancel never changes the library", async ({
   page,
 }) => {
-  await page.addInitScript(() =>
-    Object.defineProperty(navigator, "clipboard", {
-      value: {
-        writeText: async (text: string) => {
-          (window as any).copied = text;
-        },
-      },
-    }),
-  );
   await page.goto("/#/vocabulary");
+  const downloadPromise = page.waitForEvent("download");
   await page
-    .getByRole("button", { name: "复制词库＋AI 提示词", exact: true })
+    .getByRole("button", { name: "下载词库 JSON", exact: true })
     .click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "已复制" }),
-  ).toBeVisible();
-  const copied = await page.evaluate(() => (window as any).copied as string);
-  const snapshotId = JSON.parse(
-    copied
-      .split("词库快照（含已删除词供restore；不含登录信息）：\n")[1]
-      .split("\n\n学习上下文（只读）：\n")[0],
-  ).snapshotId;
-  const learning = JSON.parse(copied.split("学习上下文（只读）：\n")[1]);
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(
+    /^thai-vocabulary-ai-\d{4}-\d{2}-\d{2}\.json$/,
+  );
+  const exported = JSON.parse(await readFile((await download.path())!, "utf8"));
+  expect(exported.format).toBe("thai-learning-ai-context");
+  expect(exported.library).toBe("words");
+  expect(exported.snapshot.scope).toBe("words");
+  expect(exported.snapshot.sentences).toBeUndefined();
+  expect(exported.prompt).toContain("thai-library-changes");
+  expect(exported.prompt).not.toContain(exported.snapshot.words[0].id);
+  const snapshotId = exported.snapshot.snapshotId;
+  const learning = exported.learningContext;
   expect(learning.readOnly).toBe(true);
   expect(learning.words.length).toBeGreaterThan(0);
   expect(learning.settings.goal).toBe(10);
@@ -40,12 +36,8 @@ test("AI import previews additions/deletions and cancel never changes the librar
       { action: "delete", id: "course:work:meeting", expectedVersion: 0 },
     ],
   };
-  // Obtain real course ID from the copied data rather than assuming its format.
-  pack.operations[1].id = JSON.parse(
-    copied
-      .split("词库快照（含已删除词供restore；不含登录信息）：\n")[1]
-      .split("\n\n学习上下文（只读）：\n")[0],
-  ).words[0].id;
+  // Obtain the real course ID from the downloaded data.
+  pack.operations[1].id = exported.snapshot.words[0].id;
   await page.getByRole("button", { name: "导入 AI 修改", exact: true }).click();
   const incomplete = structuredClone(pack);
   incomplete.operations[0].data!.roman = "";
