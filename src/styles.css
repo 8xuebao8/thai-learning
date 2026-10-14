@@ -2169,3 +2169,14 @@ details p {
 .theme-word-list label { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; }
 .theme-word-list input { width: auto; }
 .import-theme_delete { border-color: #b75d4e; }
+
+.sentence-library-card h3,
+.sentence-library-card p {
+  overflow-wrap: anywhere;
+}
+.sentence-library-card h3 {
+  font-family: var(--font-thai, sans-serif);
+  font-size: 22px;
+  line-height: 1.6;
+  margin: 16px 0 8px;
+}

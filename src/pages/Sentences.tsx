@@ -1,3 +1,4 @@
+import { SentenceLibrary } from "../components/SentenceLibrary";
 import { LibraryTransfer } from "../library-transfer/LibraryTransfer";
 import { activeThemes, resolveTheme, catalogFor } from "../domain/themes";
 import { useEffect, useState } from "react";
@@ -11,6 +12,7 @@ export function Sentences() {
   const { account, record, notify, settings, putSettings, allWords } =
     useLearning();
   const catalog = catalogFor(settings, "sentences");
+  const [view, setView] = useState<"practice" | "library">("practice");
   const [theme, setTheme] = useState("work");
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
@@ -97,223 +99,270 @@ export function Sentences() {
         </div>
       </div>
       <LibraryTransfer key={`${account}:sentences`} scope="sentences" />
-      <div className="sentence-toolbar">
-        <div className="tabs">
-          {topics.map((u) => (
-            <button
-              className={resolveTheme(theme, catalog) === u.id ? "active" : ""}
-              key={u.id}
-              onClick={() => {
-                setTheme(u.id);
-                setIndex(0);
-                void setMeta(`${account}:sentence`, { theme: u.id, index: 0 });
-              }}
-            >
-              {u.title}
-            </button>
-          ))}
-        </div>
-        <select
-          aria-label="文字显示模式"
-          value={settings.display}
-          onChange={(e) =>
-            void putSettings({
-              ...settings,
-              display: e.target.value as typeof settings.display,
-            })
-          }
+      <div className="tabs" aria-label="拼句页面视图">
+        <button
+          className={view === "practice" ? "active" : ""}
+          onClick={() => setView("practice")}
         >
-          <option value="roman">A · 罗马音优先</option>
-          <option value="both">B · 泰文与罗马音</option>
-          <option value="thai">C · 泰文优先</option>
-        </select>
+          拼句练习
+        </button>
+        <button
+          className={view === "library" ? "active" : ""}
+          onClick={() => setView("library")}
+        >
+          管理句库（
+          {exercises.length + allWords.filter((w) => w.sentence).length}）
+        </button>
       </div>
-      {!list.length ? (
-        <Empty
-          title="还没有个人句子"
-          detail="添加词语或短句时展开“制作拼句练习”，核对分词后即可在这里练习。"
+      {view === "library" ? (
+        <SentenceLibrary
+          key={account}
+          onPractice={(id, targetTheme) => {
+            const nextTheme = resolveTheme(targetTheme, catalog);
+            const nextList = [
+              ...exercises,
+              ...personalExercises(allWords),
+            ].filter((e) => resolveTheme(e.theme, catalog) === nextTheme);
+            const nextIndex = nextList.findIndex((e) => e.id === id);
+            if (nextIndex < 0) return;
+            setTheme(nextTheme);
+            setIndex(nextIndex);
+            setView("practice");
+            void setMeta(`${account}:sentence`, {
+              theme: nextTheme,
+              index: nextIndex,
+            });
+          }}
         />
       ) : (
-        <section className="sentence-panel">
-          <div className="sentence-meta">
-            <span className="tag">
-              句型 {(index % list.length) + 1} / {list.length}
-            </span>
-            <span className="muted">内容待核对</span>
-          </div>
-          <p className="tiny-label">用泰语表达</p>
-          <h2 className="sentence-prompt">{exercise.prompt}</h2>
-          <div className="answer-area" aria-label="你的答案">
-            {!selected.length && (
-              <span className="answer-placeholder">
-                点击下方词块，组成一句话…
-              </span>
-            )}
-            {selected.map((id) => {
-              const tile = exercise.tiles.find((t) => t.id === id);
-              if (!tile) return null;
-              return (
+        <>
+          <div className="sentence-toolbar">
+            <div className="tabs">
+              {topics.map((u) => (
                 <button
-                  className="tile selected"
-                  key={id}
-                  disabled={busy || result === "correct" || result === "reveal"}
-                  aria-label={`退回词块 ${tile.thai}`}
+                  className={
+                    resolveTheme(theme, catalog) === u.id ? "active" : ""
+                  }
+                  key={u.id}
                   onClick={() => {
-                    setSelected(selected.filter((x) => x !== id));
+                    setTheme(u.id);
+                    setIndex(0);
+                    void setMeta(`${account}:sentence`, {
+                      theme: u.id,
+                      index: 0,
+                    });
+                  }}
+                >
+                  {u.title}
+                </button>
+              ))}
+            </div>
+            <select
+              aria-label="文字显示模式"
+              value={settings.display}
+              onChange={(e) =>
+                void putSettings({
+                  ...settings,
+                  display: e.target.value as typeof settings.display,
+                })
+              }
+            >
+              <option value="roman">A · 罗马音优先</option>
+              <option value="both">B · 泰文与罗马音</option>
+              <option value="thai">C · 泰文优先</option>
+            </select>
+          </div>
+          {!list.length ? (
+            <Empty
+              title="还没有个人句子"
+              detail="添加词语或短句时展开“制作拼句练习”，核对分词后即可在这里练习。"
+            />
+          ) : (
+            <section className="sentence-panel">
+              <div className="sentence-meta">
+                <span className="tag">
+                  句型 {(index % list.length) + 1} / {list.length}
+                </span>
+                <span className="muted">内容待核对</span>
+              </div>
+              <p className="tiny-label">用泰语表达</p>
+              <h2 className="sentence-prompt">{exercise.prompt}</h2>
+              <div className="answer-area" aria-label="你的答案">
+                {!selected.length && (
+                  <span className="answer-placeholder">
+                    点击下方词块，组成一句话…
+                  </span>
+                )}
+                {selected.map((id) => {
+                  const tile = exercise.tiles.find((t) => t.id === id);
+                  if (!tile) return null;
+                  return (
+                    <button
+                      className="tile selected"
+                      key={id}
+                      disabled={
+                        busy || result === "correct" || result === "reveal"
+                      }
+                      aria-label={`退回词块 ${tile.thai}`}
+                      onClick={() => {
+                        setSelected(selected.filter((x) => x !== id));
+                        setResult(null);
+                      }}
+                    >
+                      <Script
+                        thai={tile.thai}
+                        roman={tile.roman}
+                        controls={false}
+                        forceReveal={showAssist}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="answer-tools">
+                <button
+                  className="text-button"
+                  disabled={
+                    !selected.length ||
+                    busy ||
+                    result === "correct" ||
+                    result === "reveal"
+                  }
+                  onClick={() => {
+                    setSelected(selected.slice(0, -1));
                     setResult(null);
                   }}
                 >
-                  <Script
-                    thai={tile.thai}
-                    roman={tile.roman}
-                    controls={false}
-                    forceReveal={showAssist}
-                  />
+                  <Undo2 size={16} />
+                  撤回
                 </button>
-              );
-            })}
-          </div>
-          <div className="answer-tools">
-            <button
-              className="text-button"
-              disabled={
-                !selected.length ||
-                busy ||
-                result === "correct" ||
-                result === "reveal"
-              }
-              onClick={() => {
-                setSelected(selected.slice(0, -1));
-                setResult(null);
-              }}
-            >
-              <Undo2 size={16} />
-              撤回
-            </button>
-            <button
-              className="text-button"
-              disabled={busy}
-              onClick={() => {
-                setSelected([]);
-                setResult(null);
-                setAssisted(
-                  assisted || result === "correct" || result === "reveal",
-                );
-              }}
-            >
-              <RotateCcw size={16} />
-              重置
-            </button>
-            <button
-              className="text-button"
-              disabled={busy || result === "correct"}
-              onClick={() => {
-                setHint(true);
-                setAssisted(true);
-              }}
-            >
-              <Lightbulb size={16} />
-              提示
-            </button>
-          </div>
-          {hint && (
-            <div className="hint">
-              从「
-              {
-                exercise.tiles.find((t) => t.token === exercise.answers[0][0])
-                  ?.thai
-              }
-              」开始。{exercise.explanation}
-            </div>
-          )}
-          <button
-            className="text-button"
-            onClick={() => setShowAssist(!showAssist)}
-          >
-            {showAssist ? "收起辅助文字" : "展开辅助文字"}
-          </button>
-          <div className="word-bank" aria-label="词块区">
-            {bank.map((tile) => (
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => {
+                    setSelected([]);
+                    setResult(null);
+                    setAssisted(
+                      assisted || result === "correct" || result === "reveal",
+                    );
+                  }}
+                >
+                  <RotateCcw size={16} />
+                  重置
+                </button>
+                <button
+                  className="text-button"
+                  disabled={busy || result === "correct"}
+                  onClick={() => {
+                    setHint(true);
+                    setAssisted(true);
+                  }}
+                >
+                  <Lightbulb size={16} />
+                  提示
+                </button>
+              </div>
+              {hint && (
+                <div className="hint">
+                  从「
+                  {
+                    exercise.tiles.find(
+                      (t) => t.token === exercise.answers[0][0],
+                    )?.thai
+                  }
+                  」开始。{exercise.explanation}
+                </div>
+              )}
               <button
-                key={tile.id}
-                className="tile"
-                aria-label={`词块 ${tile.thai}`}
-                disabled={
-                  selected.includes(tile.id) ||
-                  busy ||
-                  result === "correct" ||
-                  result === "reveal"
-                }
-                onClick={() => {
-                  setSelected((s) =>
-                    s.includes(tile.id) ? s : [...s, tile.id],
-                  );
-                  setResult(null);
-                }}
+                className="text-button"
+                onClick={() => setShowAssist(!showAssist)}
               >
-                <Script
-                  thai={tile.thai}
-                  roman={tile.roman}
-                  controls={false}
-                  forceReveal={showAssist}
-                />
+                {showAssist ? "收起辅助文字" : "展开辅助文字"}
               </button>
-            ))}
-          </div>
-          <div className="sentence-bottom">
-            <button
-              className="text-button"
-              disabled={busy || result === "correct" || result === "reveal"}
-              onClick={() => void reveal()}
-            >
-              <Eye size={16} />
-              查看答案
-            </button>
-            <button
-              className="primary"
-              disabled={
-                !selected.length ||
-                busy ||
-                result === "correct" ||
-                result === "reveal"
-              }
-              onClick={() => void submit()}
-            >
-              检查答案 <ArrowRight size={17} />
-            </button>
-          </div>
-          {result && (
-            <div
-              className={`feedback ${result === "correct" ? "success" : "error"}`}
-              role="status"
-            >
-              <h3>
-                {result === "correct"
-                  ? "顺序正确，表达很清楚。"
-                  : result === "reveal"
-                    ? "看看这句话是怎样组成的。"
-                    : "再想一下词语之间的顺序。"}
-              </h3>
-              {(result === "correct" || result === "reveal") && (
-                <>
-                  <Script thai={exercise.thai} roman={exercise.roman} />
-                  <AudioButton text={exercise.thai} />
-                </>
+              <div className="word-bank" aria-label="词块区">
+                {bank.map((tile) => (
+                  <button
+                    key={tile.id}
+                    className="tile"
+                    aria-label={`词块 ${tile.thai}`}
+                    disabled={
+                      selected.includes(tile.id) ||
+                      busy ||
+                      result === "correct" ||
+                      result === "reveal"
+                    }
+                    onClick={() => {
+                      setSelected((s) =>
+                        s.includes(tile.id) ? s : [...s, tile.id],
+                      );
+                      setResult(null);
+                    }}
+                  >
+                    <Script
+                      thai={tile.thai}
+                      roman={tile.roman}
+                      controls={false}
+                      forceReveal={showAssist}
+                    />
+                  </button>
+                ))}
+              </div>
+              <div className="sentence-bottom">
+                <button
+                  className="text-button"
+                  disabled={busy || result === "correct" || result === "reveal"}
+                  onClick={() => void reveal()}
+                >
+                  <Eye size={16} />
+                  查看答案
+                </button>
+                <button
+                  className="primary"
+                  disabled={
+                    !selected.length ||
+                    busy ||
+                    result === "correct" ||
+                    result === "reveal"
+                  }
+                  onClick={() => void submit()}
+                >
+                  检查答案 <ArrowRight size={17} />
+                </button>
+              </div>
+              {result && (
+                <div
+                  className={`feedback ${result === "correct" ? "success" : "error"}`}
+                  role="status"
+                >
+                  <h3>
+                    {result === "correct"
+                      ? "顺序正确，表达很清楚。"
+                      : result === "reveal"
+                        ? "看看这句话是怎样组成的。"
+                        : "再想一下词语之间的顺序。"}
+                  </h3>
+                  {(result === "correct" || result === "reveal") && (
+                    <>
+                      <Script thai={exercise.thai} roman={exercise.roman} />
+                      <AudioButton text={exercise.thai} />
+                    </>
+                  )}
+                  <p>{exercise.explanation}</p>
+                  {assisted && (
+                    <p className="muted">本次使用了辅助，不提升掌握等级。</p>
+                  )}
+                  <button className="secondary" onClick={next}>
+                    下一句 <ArrowRight size={16} />
+                  </button>
+                </div>
               )}
-              <p>{exercise.explanation}</p>
-              {assisted && (
-                <p className="muted">本次使用了辅助，不提升掌握等级。</p>
-              )}
-              <button className="secondary" onClick={next}>
-                下一句 <ArrowRight size={16} />
-              </button>
-            </div>
+            </section>
           )}
-        </section>
+          <p className="content-note">
+            词块按表达单元拆分，不代表泰文通常用空格分词。合理变体按题目已收录的答案判断。
+          </p>
+        </>
       )}
-      <p className="content-note">
-        词块按表达单元拆分，不代表泰文通常用空格分词。合理变体按题目已收录的答案判断。
-      </p>
     </>
   );
 }

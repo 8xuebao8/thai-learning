@@ -9,25 +9,29 @@ import { generateEntry, cloud } from "../services/cloud";
 export function WordEditor({
   word,
   onClose,
+  sentenceOnly = false,
 }: {
   word?: Word;
+  sentenceOnly?: boolean;
   onClose: () => void;
 }) {
   const { putWord, notify, account, allWords, settings } = useLearning();
   const initialCatalog = catalogFor(
     settings,
-    word?.sentence ? "sentences" : "words",
+    sentenceOnly || word?.sentence ? "sentences" : "words",
   );
   const [form, setForm] = useState({
     theme: resolveTheme(word?.theme ?? "personal", initialCatalog),
     thai: word?.thai ?? "",
     roman: word?.roman ?? "",
     chinese: word?.chinese ?? "",
-    pos: word?.pos ?? "词语",
+    pos: word?.pos ?? (sentenceOnly ? "句子" : "词语"),
     note: word?.note ?? "",
     example: word?.example ?? { thai: "", roman: "", chinese: "" },
   });
-  const [manual, setManual] = useState(!!word && word.enrichment !== "pending");
+  const [manual, setManual] = useState(
+    sentenceOnly || (!!word && word.enrichment !== "pending"),
+  );
   const pendingId = useRef(word?.id ?? crypto.randomUUID());
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -47,7 +51,10 @@ export function WordEditor({
     word?.sentence?.tokens.map((t) => t.roman).join(" | ") ?? "",
   );
   const [tileConfirmed, setTileConfirmed] = useState(!!word?.sentence);
-  const catalog = catalogFor(settings, tileConfirmed ? "sentences" : "words");
+  const catalog = catalogFor(
+    settings,
+    sentenceOnly || tileConfirmed ? "sentences" : "words",
+  );
   const [alternatives, setAlternatives] = useState(
     word?.sentence?.alternatives
       .map((a) => a.map((i) => i + 1).join(" "))
@@ -93,6 +100,12 @@ export function WordEditor({
           explanation,
         };
       }
+      if (sentenceOnly && !sentence) {
+        setError(
+          "请填写泰文词块与对应罗马音，并核对分词顺序，才能保存到句库。",
+        );
+        return;
+      }
       const current = await getWord(account, pendingId.current);
       const w = wordSchema.parse({
         ...form,
@@ -112,7 +125,11 @@ export function WordEditor({
         dirty: true,
       });
       await putWord(w);
-      notify("已保存到词库，并加入学习队列。");
+      notify(
+        sentence
+          ? "已保存到句库，可以开始拼句练习。"
+          : "已保存到词库，并加入学习队列。",
+      );
       onClose();
     } catch (e) {
       setError(
@@ -201,7 +218,12 @@ export function WordEditor({
     }
   }
   async function remove() {
-    if (!word || !confirm("删除这个词语？已同步的删除也会传到其他设备。"))
+    if (
+      !word ||
+      !confirm(
+        `${sentenceOnly ? "删除这个句子" : "删除这个词语"}？已同步的删除也会传到其他设备。`,
+      )
+    )
       return;
     setBusy(true);
     try {
@@ -214,7 +236,18 @@ export function WordEditor({
     }
   }
   return (
-    <Modal title={word ? "编辑词语" : "添加你的词语"} onClose={onClose}>
+    <Modal
+      title={
+        sentenceOnly
+          ? word
+            ? "编辑句子"
+            : "添加句子"
+          : word
+            ? "编辑词语"
+            : "添加你的词语"
+      }
+      onClose={onClose}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -381,8 +414,10 @@ export function WordEditor({
                 />
               </label>
             </details>
-            <details>
-              <summary>制作拼句练习（可选）</summary>
+            <details open={sentenceOnly || undefined}>
+              <summary>
+                {sentenceOnly ? "拼句词块与正确顺序" : "制作拼句练习（可选）"}
+              </summary>
               <p className="muted">
                 用于整句。按正确顺序手动划分词块，使用 |
                 分隔；不要自动把每个泰文字母当作词语。
@@ -459,7 +494,7 @@ export function WordEditor({
                   onClick={() => void remove()}
                 >
                   <Trash2 size={16} />
-                  删除词语
+                  {sentenceOnly ? "删除句子" : "删除词语"}
                 </button>
               )}
               <button
