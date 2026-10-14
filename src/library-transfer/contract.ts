@@ -72,14 +72,16 @@ const operation = z.discriminatedUnion("action", [
 ]);
 export const packageSchema = z
   .object({
-    format: z.literal("thai-library-changes"),
+    format: z.enum(["thai-library-changes", "thai-sentence-changes"]),
     version: z.literal(1),
     snapshotId: z.string().min(1).max(100),
     operations: z.array(operation).min(1).max(10000),
   })
   .strict();
 export type ChangePackage = z.infer<typeof packageSchema>;
+export type LibraryScope = "all" | "words" | "sentences";
 export type Snapshot = {
+  scope?: LibraryScope;
   id: string;
   epoch: number;
   words: Word[];
@@ -173,6 +175,8 @@ export function parsePackage(text: string): ChangePackage {
     if (start >= 0) throw new Error("JSON 不完整，请补齐后重新导入。");
   }
   if (!packages.length) throw new Error("没有找到修改包。");
+  if (packages.some((p) => p.format !== packages[0].format))
+    throw new Error("词库和句库修改包不能混合，请使用各自入口。");
   if (packages.some((p) => p.snapshotId !== packages[0].snapshotId))
     throw new Error("所有修改包必须使用同一份词库快照。");
   return packageSchema.parse({
@@ -180,7 +184,7 @@ export function parsePackage(text: string): ChangePackage {
     operations: packages.flatMap((p) => p.operations),
   });
 }
-export function previewPackage(
+function previewCore(
   p: ChangePackage,
   s: Snapshot,
   current: Word[],
@@ -484,4 +488,59 @@ export function exportPrompt(snapshot: Snapshot) {
 一般字段限长：thai500、roman/chinese1000、pos100、note2000、example.thai1000、example.roman2000、example.chinese1000。已有词查重，不擅自覆盖；已有句子新增拼句需明确update并列出。
 词库快照（含已删除词供restore；不含登录信息）：
 ${JSON.stringify({ snapshotId: snapshot.id, themes: snapshot.themes ?? defaultCatalog, words: snapshot.words.map(({ dirty, updatedAt, ...w }) => ({ ...w, theme: resolveTheme(w.theme, snapshot.themes) })) }, null, 2)}`;
+}
+
+export function previewPackage(
+  p: ChangePackage,
+  s: Snapshot,
+  current: Word[],
+  idScope = s.id,
+  catalog: Topic[] = defaultCatalog,
+): PreviewRow[] {
+  const rows = previewCore(p, s, current, idScope, catalog);
+  const scope = s.scope ?? "all";
+  const expectedFormat =
+    scope === "sentences" ? "thai-sentence-changes" : "thai-library-changes";
+  return rows.map((row) => {
+    const op = p.operations[row.index];
+    let reason =
+      p.format !== expectedFormat
+        ? "修改包与快照不匹配，请使用对应的词库或句库入口。"
+        : "";
+    if (scope !== "all" && !op.action.startsWith("theme_")) {
+      const before =
+        "id" in op ? s.words.find((w) => w.id === op.id) : undefined;
+      if (before && !!before.sentence !== (scope === "sentences"))
+        reason = "这条内容属于另一资料库，请使用对应入口。";
+      if (
+        scope === "words" &&
+        (row.after?.sentence ||
+          (op.action === "add" && op.data.sentence) ||
+          (op.action === "update" && op.changes.sentence))
+      )
+        reason = "词库入口不修改拼句，请到拼句练习导入。";
+      if (scope === "sentences" && row.after && !row.after.deleted) {
+        const w = row.after;
+        if (
+          op.action === "add" &&
+          (w.pos !== "句子" ||
+            !w.note.trim() ||
+            !w.example.thai.trim() ||
+            !w.example.roman.trim() ||
+            !w.example.chinese.trim())
+        )
+          reason =
+            "新增句子必须填写词性“句子”、实际用法和完整泰语例句、读音、中文。";
+        if (
+          !w.sentence ||
+          !w.roman.trim() ||
+          !w.chinese.trim() ||
+          !w.sentence.explanation.trim() ||
+          w.sentence.tokens.some((t) => !t.roman.trim())
+        )
+          reason = "句库必须包含整句、中文、读音、分词块读音和词序说明。";
+      }
+    }
+    return reason ? { ...row, status: "invalid" as const, reason } : row;
+  });
 }

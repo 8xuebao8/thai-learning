@@ -149,7 +149,7 @@ test("uploads all files and confirms a paginated large import once", async ({
   await page.goto("/#/vocabulary");
   const snapshotId = await page.evaluate(async () => {
     const { copyLibrary } = await import("/src/library-transfer/service.ts");
-    return (await copyLibrary("guest")).snapshot.id;
+    return (await copyLibrary("guest", "words")).snapshot.id;
   });
   const file = (offset: number, count: number) => ({
     name: `words-${offset}.json`,

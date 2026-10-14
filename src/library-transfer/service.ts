@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defaultCatalog } from "../domain/themes";
-import { learningContext } from "./learning-context";
+import { exportScopedPrompt, scopedLearningContext } from "./scoped-export";
 import { courseWords } from "../content/course";
 import {
   db,
@@ -14,7 +14,7 @@ import {
   parsePackage,
   catalogAfter,
   previewPackage,
-  exportPrompt,
+  type LibraryScope,
   stable,
   fingerprint,
   type Snapshot,
@@ -127,10 +127,14 @@ async function remoteReceipt(
   };
 }
 
-export async function copyLibrary(account: string) {
+export async function copyLibrary(
+  account: string,
+  scope: LibraryScope = "all",
+) {
   if (account !== "guest") await syncAccount(account);
   const data = await current(account);
   const snapshot: Snapshot = {
+    scope,
     id: crypto.randomUUID(),
     epoch: data.epoch,
     words: data.words,
@@ -140,10 +144,10 @@ export async function copyLibrary(account: string) {
   return {
     snapshot,
     text:
-      exportPrompt(snapshot) +
+      exportScopedPrompt(snapshot) +
       "\n\n学习上下文（只读）：\n" +
       JSON.stringify(
-        learningContext(data.words, data.events, data.settings),
+        scopedLearningContext(data.words, data.events, data.settings, scope),
         null,
         2,
       ),
@@ -152,6 +156,7 @@ export async function copyLibrary(account: string) {
 export async function prepareImport(
   account: string,
   text: string,
+  scope: LibraryScope = "all",
 ): Promise<Prepared> {
   const p = parsePackage(text);
   if (account !== "guest") await syncAccount(account);
@@ -163,6 +168,17 @@ export async function prepareImport(
     throw new Error(
       "本浏览器没有这份词库快照，请先复制词库给 AI；访客刷新后快照会失效。",
     );
+  if (
+    scope !== "all" &&
+    s.scope !== scope &&
+    !(scope === "words" && (!s.scope || s.scope === "all"))
+  )
+    throw new Error("快照属于另一入口，请在对应页面重新复制资料和提示词。");
+  if (
+    p.format !==
+    (s.scope === "sentences" ? "thai-sentence-changes" : "thai-library-changes")
+  )
+    throw new Error("修改包类型不匹配，请使用词库或句库的对应入口。");
   const data = await current(account);
   if (data.epoch !== s.epoch) throw new Error("账号已初始化，请重新复制词库。");
   const request = await digest(p);
@@ -302,6 +318,10 @@ export async function confirmImport(
       const job: BulkJob = { prepared: p, batches, completed: 0 };
       await setMeta(`${account}:ai-bulk:${p.request}`, job);
       await setMeta(`${account}:ai-bulk-active`, p.request);
+      await setMeta(
+        `${account}:ai-bulk-active:${p.snapshot.scope ?? "all"}`,
+        p.request,
+      );
       return executeBulk(account, job, sync!, onProgress);
     }
     let receipt: Receipt = {
@@ -404,13 +424,25 @@ type BulkJob = {
   batches: CloudRecord[][];
   completed: number;
 };
-export async function pendingImport(account: string): Promise<Prepared | null> {
-  const id = await getMeta<string | null>(`${account}:ai-bulk-active`, null);
+export async function pendingImport(
+  account: string,
+  scope: LibraryScope = "all",
+): Promise<Prepared | null> {
+  const id =
+    (await getMeta<string | null>(
+      `${account}:ai-bulk-active:${scope}`,
+      null,
+    )) ?? (await getMeta<string | null>(`${account}:ai-bulk-active`, null));
   if (!id) return null;
-  return (
-    (await getMeta<BulkJob | null>(`${account}:ai-bulk:${id}`, null))
-      ?.prepared ?? null
-  );
+  const job = await getMeta<BulkJob | null>(`${account}:ai-bulk:${id}`, null);
+  return job &&
+    (scope === "all" ||
+      job.prepared.snapshot.scope === scope ||
+      (scope === "words" &&
+        (!job.prepared.snapshot.scope ||
+          job.prepared.snapshot.scope === "all")))
+    ? job.prepared
+    : null;
 }
 async function executeBulk(
   account: string,
@@ -533,6 +565,9 @@ async function executeBulk(
   await setMeta(`${account}:ai-bulk:${p.request}`, null);
   if ((await getMeta(`${account}:ai-bulk-active`, null)) === p.request)
     await setMeta(`${account}:ai-bulk-active`, null);
+  const scopeKey = `${account}:ai-bulk-active:${p.snapshot.scope ?? "all"}`;
+  if ((await getMeta(scopeKey, null)) === p.request)
+    await setMeta(scopeKey, null);
   try {
     await sync();
   } catch {

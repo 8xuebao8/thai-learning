@@ -1,6 +1,6 @@
 import { ThemeManager } from "./ThemeManager";
 import { defaultCatalog, topicName } from "../domain/themes";
-import { MAX_IMPORT_BYTES, catalogAfter } from "./contract";
+import { MAX_IMPORT_BYTES, catalogAfter, type LibraryScope } from "./contract";
 import { useEffect, useRef, useState } from "react";
 import { useLearning } from "../app/context";
 import { Modal } from "../components/common";
@@ -70,7 +70,13 @@ function Details({ word, before }: { word: Word; before?: Word }) {
     </dl>
   );
 }
-export function LibraryTransfer() {
+export function LibraryTransfer({
+  scope = "words",
+}: {
+  scope?: Exclude<LibraryScope, "all">;
+}) {
+  const sentences = scope === "sentences";
+  const library = sentences ? "句库" : "词库";
   const { account } = useLearning();
   const [input, setInput] = useState("");
   const [open, setOpen] = useState(false);
@@ -86,13 +92,13 @@ export function LibraryTransfer() {
   const running = useRef(false);
   useEffect(() => {
     let active = true;
-    void pendingImport(account).then((p) => {
+    void pendingImport(account, scope).then((p) => {
       if (active) setPending(p);
     });
     return () => {
       active = false;
     };
-  }, [account]);
+  }, [account, scope]);
   useEffect(() => {
     setPage(0);
   }, [prepared, receipt]);
@@ -123,7 +129,7 @@ export function LibraryTransfer() {
       await task();
     } catch (e) {
       setError((e as Error).message);
-      setPending(await pendingImport(account));
+      setPending(await pendingImport(account, scope));
     } finally {
       running.current = false;
       setBusy(false);
@@ -139,10 +145,10 @@ export function LibraryTransfer() {
   }
   async function copy() {
     await run(async () => {
-      const { text } = await copyLibrary(account);
+      const { text } = await copyLibrary(account, scope);
       try {
         await navigator.clipboard.writeText(text);
-        setMessage("已复制词库、学习进度和提示词，可以粘贴给 AI。");
+        setMessage(`已复制${library}、对应学习进度和提示词，可以粘贴给 AI。`);
       } catch {
         setFallback(text);
       }
@@ -150,7 +156,7 @@ export function LibraryTransfer() {
   }
   async function preview() {
     await run(async () => {
-      const p = await prepareImport(account, input);
+      const p = await prepareImport(account, input, scope);
       if (p.receipt) {
         setReceipt(p.receipt);
         setMessage("这个修改包已处理，不会重复添加。");
@@ -163,11 +169,12 @@ export function LibraryTransfer() {
   return (
     <section className="library-transfer">
       <div>
-        <strong>用 AI 整理词库</strong>
+        <strong>用 AI 整理{library}</strong>
         <p className="muted">
-          复制给 AI
-          讨论，再粘贴修改包。预览确认前不会改动词库；复制内容包含词条、备注、学习目标、掌握情况和练习历史，供你发给
-          AI 讨论。
+          {sentences
+            ? "复制句库、分词块、词序说明和拼句进度给 AI，再上传句库修改包。内置拼句作为只读参考。"
+            : "复制词汇、备注和词汇学习进度给 AI，再上传词库修改包。拼句请在拼句练习页整理。"}
+          预览确认前不会改动资料。主题目录共用，重命名或删除主题会影响词汇和拼句两边。
         </p>
       </div>
       <div className="button-row">
@@ -176,7 +183,7 @@ export function LibraryTransfer() {
           disabled={busy}
           onClick={() => void copy()}
         >
-          复制词库＋AI 提示词
+          复制{library}＋AI 提示词
         </button>
         <button
           className="secondary"
@@ -186,17 +193,19 @@ export function LibraryTransfer() {
             setError("");
           }}
         >
-          导入 AI 修改
+          {sentences ? "导入 AI 句库修改" : "导入 AI 修改"}
         </button>
       </div>
-      <ThemeManager
-        busy={busy}
-        onPreview={(ops) =>
-          void run(async () =>
-            setPrepared(await prepareOperations(account, ops)),
-          )
-        }
-      />
+      {!sentences && (
+        <ThemeManager
+          busy={busy}
+          onPreview={(ops) =>
+            void run(async () =>
+              setPrepared(await prepareOperations(account, ops)),
+            )
+          }
+        />
+      )}
       {account === "guest" && (
         <p className="muted">
           当前为临时体验：导入内容和快照刷新后消失，登录不会合并访客数据。
@@ -262,10 +271,10 @@ export function LibraryTransfer() {
         </div>
       )}
       {fallback && (
-        <Modal title="复制词库和提示词" onClose={() => setFallback("")}>
+        <Modal title={`复制${library}和提示词`} onClose={() => setFallback("")}>
           <p>浏览器没有允许自动复制。请选择下方全部内容后复制。</p>
           <textarea
-            aria-label="词库和提示词"
+            aria-label={`${library}和提示词`}
             rows={12}
             readOnly
             value={fallback}
@@ -278,7 +287,7 @@ export function LibraryTransfer() {
       )}
       {prepared && (
         <Modal
-          title="确认词库修改"
+          title={`确认${library}修改`}
           onClose={() => {
             if (!busy) {
               setPrepared(null);
@@ -286,6 +295,16 @@ export function LibraryTransfer() {
             }
           }}
         >
+          {(!prepared.snapshot.scope || prepared.snapshot.scope === "all") && (
+            <p role="alert">
+              这是兼容的全库快照，可能同时包含词汇和拼句，请核对下方全部操作；新的复制入口已分开。
+            </p>
+          )}
+          {prepared.rows.some((r) => r.themeAfter) && (
+            <p role="alert">
+              主题目录为词汇和拼句共用，以下主题变更会影响两边。
+            </p>
+          )}
           <p className="import-summary">
             {Object.entries(names)
               .map(

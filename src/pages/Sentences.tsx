@@ -1,3 +1,4 @@
+import { LibraryTransfer } from "../library-transfer/LibraryTransfer";
 import { activeThemes, resolveTheme } from "../domain/themes";
 import { useEffect, useState } from "react";
 import { ArrowRight, RotateCcw, Undo2, Lightbulb, Eye } from "lucide-react";
@@ -93,6 +94,7 @@ export function Sentences() {
           <p className="muted">跟着中文提示，用泰语的顺序组织句子。</p>
         </div>
       </div>
+      <LibraryTransfer key={`${account}:sentences`} scope="sentences" />
       <div className="sentence-toolbar">
         <div className="tabs">
           {topics.map((u) => (
