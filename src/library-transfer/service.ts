@@ -16,6 +16,7 @@ import {
   previewPackage,
   exportPrompt,
   stable,
+  fingerprint,
   type Snapshot,
   type ChangePackage,
   type PreviewRow,
@@ -169,6 +170,11 @@ export async function prepareImport(
     `${account}:ai-receipt:${s.epoch}:${request}`,
     undefined,
   );
+  const pending = await getMeta<BulkJob | null>(
+    `${account}:ai-bulk:${request}`,
+    null,
+  );
+  if (pending) return pending.prepared;
   const rows = previewPackage(
     p,
     s,
@@ -191,6 +197,7 @@ export async function prepareImport(
 export async function confirmImport(
   account: string,
   p: Prepared,
+  onProgress?: (value: string) => void,
 ): Promise<Receipt> {
   if (p.receipt) return p.receipt;
   if (p.rows.some((r) => r.status === "invalid" || r.status === "conflict"))
@@ -207,6 +214,11 @@ export async function confirmImport(
     const receiptKey = `${account}:ai-receipt:${s.epoch}:${p.request}`;
     const old = await getMeta<Receipt | null>(receiptKey, null);
     if (old) return old;
+    const pending = await getMeta<BulkJob | null>(
+      `${account}:ai-bulk:${p.request}`,
+      null,
+    );
+    if (pending) return executeBulk(account, pending, sync!, onProgress);
     const remote = await remoteReceipt(account, p);
     if (remote) {
       await setMeta(receiptKey, remote);
@@ -260,6 +272,38 @@ export async function confirmImport(
         opId: `ai:${p.request}:themes`,
         payload: nextSettings,
       });
+    if (
+      account !== "guest" &&
+      (cloudRecords.length > 100 ||
+        new TextEncoder().encode(JSON.stringify(cloudRecords)).length > 350000)
+    ) {
+      const ordered = [
+        ...cloudRecords.filter((r) => r.kind === "settings"),
+        ...cloudRecords.filter((r) => r.kind !== "settings"),
+      ];
+      const batches: CloudRecord[][] = [];
+      let chunk: CloudRecord[] = [];
+      for (const record of ordered) {
+        if (
+          chunk.length &&
+          (chunk[0].kind === "settings" ||
+            chunk.length >= 100 ||
+            new TextEncoder().encode(JSON.stringify([...chunk, record]))
+              .length > 350000)
+        ) {
+          batches.push(chunk);
+          chunk = [];
+        }
+        if (new TextEncoder().encode(JSON.stringify([record])).length > 350000)
+          throw new Error("单条内容过大，请缩短后重新预览。");
+        chunk.push(record);
+      }
+      if (chunk.length) batches.push(chunk);
+      const job: BulkJob = { prepared: p, batches, completed: 0 };
+      await setMeta(`${account}:ai-bulk:${p.request}`, job);
+      await setMeta(`${account}:ai-bulk-active`, p.request);
+      return executeBulk(account, job, sync!, onProgress);
+    }
     let receipt: Receipt = {
       applied: ready.length,
       rows: p.rows,
@@ -345,4 +389,155 @@ export async function prepareOperations(
       operations,
     }),
   );
+}
+
+type CloudRecord = {
+  id: string;
+  kind: string;
+  baseVersion: number;
+  deleted: boolean;
+  opId: string;
+  payload: unknown;
+};
+type BulkJob = {
+  prepared: Prepared;
+  batches: CloudRecord[][];
+  completed: number;
+};
+export async function pendingImport(account: string): Promise<Prepared | null> {
+  const id = await getMeta<string | null>(`${account}:ai-bulk-active`, null);
+  if (!id) return null;
+  return (
+    (await getMeta<BulkJob | null>(`${account}:ai-bulk:${id}`, null))
+      ?.prepared ?? null
+  );
+}
+async function executeBulk(
+  account: string,
+  job: BulkJob,
+  sync: () => Promise<void>,
+  progress?: (value: string) => void,
+): Promise<Receipt> {
+  const p = job.prepared;
+  const finalCatalog = catalogAfter(
+    p.rows,
+    p.snapshot.themes ?? defaultCatalog,
+  );
+  for (let i = job.completed; i < job.batches.length; i++) {
+    progress?.(
+      `已完成 ${i}/${job.batches.length} 批，正在处理第 ${i + 1} 批。失败后可继续，已完成的批次不会回滚。`,
+    );
+    await sync();
+    const data = await current(account);
+    if (data.epoch !== p.snapshot.epoch)
+      throw new Error("账号已初始化，导入任务已停止。");
+    const { data: auth } = await cloud!.auth.getSession();
+    if (auth.session?.user.id !== account)
+      throw new Error("账号已变化，请重新登录。");
+    const headers = {
+      "Content-Type": "application/json",
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${auth.session.access_token}`,
+    };
+    const request = `${p.request}:b:${i}`;
+    const call = async (rpc: string, body: unknown) => {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/${rpc}`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(20000),
+        },
+      );
+      if (!response.ok)
+        throw new Error(`第 ${i + 1} 批尚未确认，恢复网络后可继续。`);
+      return response.json();
+    };
+    const records = job.batches[i];
+    let result = await call("get_learning_import_receipt", {
+      p_epoch: p.snapshot.epoch,
+      p_request: request,
+    });
+    if (!result) {
+      const expectedCatalog =
+        i === 0 ? (p.snapshot.themes ?? defaultCatalog) : finalCatalog;
+      if (
+        stable(data.settings.themes ?? defaultCatalog) !==
+        stable(expectedCatalog)
+      )
+        throw new Error(
+          "主题目录已变化，剩余操作停止；请复制最新词库重新生成。",
+        );
+      for (const record of records.filter((r) => r.kind === "word")) {
+        const row = p.rows.find((r) => r.after?.id === record.id)!;
+        const word = data.words.find((w) => w.id === record.id);
+        if (
+          row.before
+            ? !word || fingerprint(word) !== fingerprint(row.before)
+            : !!word
+        )
+          throw new Error(
+            `词条 ${row.thai} 已变化，剩余操作停止，请重新生成。`,
+          );
+        if (
+          (!row.before ||
+            row.before.deleted ||
+            row.before.thai !== row.after!.thai) &&
+          !row.after!.deleted &&
+          data.words.some(
+            (w) =>
+              w.id !== record.id &&
+              !w.deleted &&
+              w.thai.normalize("NFC").trim() ===
+                row.after!.thai.normalize("NFC").trim(),
+          )
+        )
+          throw new Error(
+            `词条 ${row.thai} 已存在，剩余操作停止，请重新生成。`,
+          );
+      }
+      result = await call("import_learning_changes_v2", {
+        p_epoch: p.snapshot.epoch,
+        p_seq: data.seq,
+        p_request: request,
+        p_records: records,
+      });
+    }
+    const parsed = z
+      .object({
+        status: z.literal("applied"),
+        acks: z.array(z.object({ id: z.string(), version: z.number() })),
+      })
+      .safeParse(result);
+    if (
+      !parsed.success ||
+      parsed.data.acks.length !== records.length ||
+      records.some((r) => !parsed.data.acks.some((a) => a.id === r.id))
+    )
+      throw new Error(
+        `第 ${i + 1} 批未获完整成功回执；已完成 ${i} 批。可重试核实，冲突时请重新生成。`,
+      );
+    job.completed = i + 1;
+    await setMeta(`${account}:ai-bulk:${p.request}`, job);
+  }
+  const receipt: Receipt = {
+    applied: p.rows.filter((r) => r.status === "ready").length,
+    rows: p.rows,
+    cloud: true,
+  };
+  await setMeta(
+    `${account}:ai-receipt:${p.snapshot.epoch}:${p.request}`,
+    receipt,
+  );
+  await setMeta(`${account}:ai-bulk:${p.request}`, null);
+  if ((await getMeta(`${account}:ai-bulk-active`, null)) === p.request)
+    await setMeta(`${account}:ai-bulk-active`, null);
+  try {
+    await sync();
+  } catch {
+    receipt.refreshPending = true;
+  }
+  progress?.("全部批次已完成。");
+  return receipt;
 }

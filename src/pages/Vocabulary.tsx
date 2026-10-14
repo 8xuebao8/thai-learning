@@ -27,7 +27,7 @@ export function Vocabulary({
   quiz: (w: Word[]) => void;
   onEdit: (w?: Word) => void;
 }) {
-  const { allWords, events, record, notify, settings } = useLearning();
+  const { account, allWords, events, record, notify, settings } = useLearning();
   const catalog = settings.themes ?? defaultCatalog;
   const [query, setQuery] = useState("");
   const [theme, setTheme] = useState("all");
@@ -58,7 +58,7 @@ export function Vocabulary({
           添加词语
         </button>
       </div>
-      <LibraryTransfer />
+      <LibraryTransfer key={account} />
       <div className="toolbar">
         <div className="search-box">
           <Search size={18} />

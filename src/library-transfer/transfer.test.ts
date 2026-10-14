@@ -126,10 +126,10 @@ describe("AI changes", () => {
     ).toBe(true);
   });
 });
-it("guides direct complete generation in small paste-ready batches", () => {
+it("guides complete generation and automatic website batching", () => {
   const out = exportPrompt(snapshot);
-  expect(out).toContain("同一条回复一次生成全部请求内容");
-  expect(out).toContain("每包最多100项操作");
+  expect(out).toContain("一次生成全部请求的实际数据");
+  expect(out).toContain("统一预览确认一次后自动分批同步");
   expect(out).not.toContain("每批默认20个");
   expect(out).not.toContain("每条回复只给一个");
   expect(out).toContain("输出格式");

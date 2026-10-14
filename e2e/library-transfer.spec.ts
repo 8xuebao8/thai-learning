@@ -142,3 +142,54 @@ test("live sentence update removes stale selected tiles without crashing", async
     page.getByRole("button", { name: "退回词块 ค", exact: true }),
   ).toHaveCount(0);
 });
+
+test("uploads all files and confirms a paginated large import once", async ({
+  page,
+}) => {
+  await page.goto("/#/vocabulary");
+  const snapshotId = await page.evaluate(async () => {
+    const { copyLibrary } = await import("/src/library-transfer/service.ts");
+    return (await copyLibrary("guest")).snapshot.id;
+  });
+  const file = (offset: number, count: number) => ({
+    name: `words-${offset}.json`,
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        format: "thai-library-changes",
+        version: 1,
+        snapshotId,
+        operations: Array.from({ length: count }, (_, i) => ({
+          action: "add",
+          data: {
+            thai: `ทดสอบไฟล์${offset + i}`,
+            chinese: `测试${offset + i}`,
+            roman: "test",
+          },
+        })),
+      }),
+    ),
+  });
+  await page.getByRole("button", { name: "导入 AI 修改", exact: true }).click();
+  await page
+    .getByLabel("上传全部 JSON 文件（可多选）")
+    .setInputFiles([file(0, 110), file(110, 95)]);
+  await expect(page.getByRole("status")).toContainText("已读取 2 个文件");
+  await page.getByRole("button", { name: "预览修改", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "确认词库修改" });
+  await expect(dialog).toContainText("新增 205");
+  await expect(dialog.locator(".import-row")).toHaveCount(50);
+  await dialog.getByRole("button", { name: "下一页" }).click();
+  await expect(dialog).toContainText("第 2 / 5 页");
+  await dialog.getByRole("button", { name: "确认修改（临时体验）" }).click();
+  await expect(page.getByRole("dialog", { name: "导入结果" })).toContainText(
+    "已完成 205 项",
+  );
+  const count = await page.evaluate(async () => {
+    const { loadData } = await import("/src/data/store.ts");
+    return (await loadData("guest")).words.filter((w) =>
+      w.thai.startsWith("ทดสอบไฟล์"),
+    ).length;
+  });
+  expect(count).toBe(205);
+});
